@@ -1,9 +1,9 @@
-name: Deploy React to GitHub Pages
+name: Build and Deploy React
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # cho phép bấm chạy tay
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,14 +23,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - run: npm ci
-      - run: npm run build
+      - name: Cài thư viện
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Xác định thư mục build và tạo 404.html
+        run: |
+          if [ -d dist ]; then OUT=dist; else OUT=build; fi
+          echo "OUT_DIR=$OUT" >> $GITHUB_ENV
+          cp $OUT/index.html $OUT/404.html
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist        # Vite: dist | Create React App: build
+          path: ${{ env.OUT_DIR }}
 
   deploy:
     needs: build
