@@ -22,6 +22,8 @@ interface CanvasProps {
   pinVoltages: Map<string, number>;
   componentCurrents: Map<string, number>;
   onTriggerSolve: () => void;
+  onPushHistory?: (description: string) => void;
+  onPushCustomSnapshot?: (customSnapshot: { components: CircuitComponent[]; wires: Wire[] }, description: string) => void;
 }
 
 export const Canvas: React.FC<CanvasProps> = ({
@@ -38,6 +40,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   pinVoltages,
   componentCurrents,
   onTriggerSolve,
+  onPushHistory,
+  onPushCustomSnapshot,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -50,6 +54,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   // Dragging component state
   const [draggingCompId, setDraggingCompId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const dragInitialStateRef = useRef<{ components: CircuitComponent[]; wires: Wire[] } | null>(null);
+  const dragStartCompPos = useRef<{ id: string; x: number; y: number } | null>(null);
 
   // Wiring state
   const [wiringStart, setWiringStart] = useState<{ compId: string; pinId: string; x: number; y: number } | null>(null);
@@ -86,6 +92,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         setWiringPoints([]);
       } else if (e.key === 'r' || e.key === 'R') {
         if (selectedComponentId) {
+          onPushHistory?.('Xoay linh kiện 90°');
           const updated = components.map((c) => {
             if (c.id === selectedComponentId) {
               const newRot = (c.rotation + 90) % 360;
@@ -98,10 +105,13 @@ export const Canvas: React.FC<CanvasProps> = ({
         }
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedWireId) {
+          onPushHistory?.('Xóa dây dẫn');
           onUpdateWires(wires.filter((w) => w.id !== selectedWireId));
           onSelectWire(null);
           onTriggerSolve();
         } else if (selectedComponentId) {
+          const comp = components.find((c) => c.id === selectedComponentId);
+          onPushHistory?.(`Xóa ${comp?.name || 'linh kiện'}`);
           // Delete component and attached wires
           onUpdateComponents(components.filter((c) => c.id !== selectedComponentId));
           onUpdateWires(
@@ -115,7 +125,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedComponentId, selectedWireId, components, wires, onUpdateComponents, onUpdateWires, onSelectComponent, onSelectWire, onTriggerSolve]);
+  }, [selectedComponentId, selectedWireId, components, wires, onUpdateComponents, onUpdateWires, onSelectComponent, onSelectWire, onTriggerSolve, onPushHistory]);
 
   // Handle Zoom via Mouse Wheel
   const handleWheel = (e: React.WheelEvent) => {
@@ -213,7 +223,20 @@ export const Canvas: React.FC<CanvasProps> = ({
       setIsPanning(false);
     }
     if (draggingCompId) {
+      if (dragStartCompPos.current && dragStartCompPos.current.id === draggingCompId) {
+        const cur = components.find((c) => c.id === draggingCompId);
+        if (
+          cur &&
+          (Math.abs(cur.x - dragStartCompPos.current.x) > 2 || Math.abs(cur.y - dragStartCompPos.current.y) > 2)
+        ) {
+          if (dragInitialStateRef.current) {
+            onPushCustomSnapshot?.(dragInitialStateRef.current, `Di chuyển ${cur.name || cur.type}`);
+          }
+        }
+      }
       setDraggingCompId(null);
+      dragInitialStateRef.current = null;
+      dragStartCompPos.current = null;
       onTriggerSolve();
     }
   };
@@ -258,6 +281,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         toPin: { compId: comp.id, pinId: pin.id },
       };
 
+      onPushHistory?.('Nối dây dẫn mới');
       onUpdateWires([...wires, newWire]);
       setWiringStart(null);
       setWiringPoints([]);
@@ -471,6 +495,11 @@ export const Canvas: React.FC<CanvasProps> = ({
                   const worldPos = screenToWorld(e.clientX, e.clientY);
                   setDraggingCompId(comp.id);
                   setDragOffset({ x: worldPos.x - comp.x, y: worldPos.y - comp.y });
+                  dragInitialStateRef.current = {
+                    components: JSON.parse(JSON.stringify(components)),
+                    wires: JSON.parse(JSON.stringify(wires)),
+                  };
+                  dragStartCompPos.current = { id: comp.id, x: comp.x, y: comp.y };
                 }
               }}
             >

@@ -211,6 +211,8 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({ isOpen, onClos
 
                 <div className="bg-[#0d1117] p-3 rounded border border-slate-800 space-y-1">
                   <div className="font-bold text-amber-300">Thao Tác Linh Kiện</div>
+                  <div>• <b>Hoàn tác (Undo):</b> Phím <b>Ctrl + Z</b> (phục hồi khi xóa nhầm hoặc đổi vị trí).</div>
+                  <div>• <b>Làm lại (Redo):</b> Phím <b>Ctrl + Y</b> hoặc <b>Ctrl + Shift + Z</b>.</div>
                   <div>• <b>Xoay linh kiện 90°:</b> Nhấn phím <b>R</b> khi linh kiện đang được chọn.</div>
                   <div>• <b>Xóa linh kiện / Dây:</b> Phím <b>Delete</b> hoặc <b>Backspace</b>.</div>
                   <div>• <b>Kéo di chuyển:</b> Giữ chuột trái trên thân linh kiện rồi kéo; dây tự bám theo.</div>

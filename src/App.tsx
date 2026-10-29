@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, Cpu, Download, FileCode, FolderArchive, Upload } from 'lucide-react';
+import { ChevronDown, Cpu, Download, FileCode, FolderArchive, Redo2, Undo2, Upload } from 'lucide-react';
 import { Canvas } from './components/Canvas';
 import { CheatSheetModal } from './components/CheatSheetModal';
 import { Console } from './components/Console';
@@ -117,6 +117,160 @@ export default function App() {
       triggerSolve();
     };
   }, [triggerSolve]);
+
+  // Circuit Undo / Redo History (stores up to 20 operations)
+  interface CircuitHistoryEntry {
+    components: CircuitComponent[];
+    wires: Wire[];
+    selectedCompId: string | null;
+    selectedWireId: string | null;
+    description: string;
+  }
+
+  const undoStackRef = useRef<CircuitHistoryEntry[]>([]);
+  const redoStackRef = useRef<CircuitHistoryEntry[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  // Push snapshot to undo stack
+  const pushHistory = useCallback(
+    (description: string = 'Thao tác mạch') => {
+      const snapshot: CircuitHistoryEntry = {
+        components: JSON.parse(JSON.stringify(components)),
+        wires: JSON.parse(JSON.stringify(wires)),
+        selectedCompId,
+        selectedWireId,
+        description,
+      };
+
+      undoStackRef.current = [...undoStackRef.current.slice(-19), snapshot];
+      redoStackRef.current = [];
+      setCanUndo(true);
+      setCanRedo(false);
+    },
+    [components, wires, selectedCompId, selectedWireId]
+  );
+
+  // Push custom snapshot (e.g. pre-drag state)
+  const pushCustomSnapshot = useCallback(
+    (customSnapshot: { components: CircuitComponent[]; wires: Wire[] }, description: string) => {
+      const snapshot: CircuitHistoryEntry = {
+        components: JSON.parse(JSON.stringify(customSnapshot.components)),
+        wires: JSON.parse(JSON.stringify(customSnapshot.wires)),
+        selectedCompId,
+        selectedWireId,
+        description,
+      };
+
+      undoStackRef.current = [...undoStackRef.current.slice(-19), snapshot];
+      redoStackRef.current = [];
+      setCanUndo(true);
+      setCanRedo(false);
+    },
+    [selectedCompId, selectedWireId]
+  );
+
+  // Handle Undo (Ctrl+Z)
+  const handleUndo = useCallback(() => {
+    if (undoStackRef.current.length === 0) {
+      addLog('INFO', 'Không còn thao tác nào để hoàn tác.');
+      return;
+    }
+
+    // Save current state into redo stack
+    const currentState: CircuitHistoryEntry = {
+      components: JSON.parse(JSON.stringify(components)),
+      wires: JSON.parse(JSON.stringify(wires)),
+      selectedCompId,
+      selectedWireId,
+      description: 'Trạng thái trước khi hoàn tác',
+    };
+    redoStackRef.current = [...redoStackRef.current.slice(-19), currentState];
+
+    // Pop the previous state
+    const previousState = undoStackRef.current.pop()!;
+    setCanUndo(undoStackRef.current.length > 0);
+    setCanRedo(true);
+
+    // Apply previous state
+    setComponents(previousState.components);
+    setWires(previousState.wires);
+    setSelectedCompId(previousState.selectedCompId);
+    setSelectedWireId(previousState.selectedWireId);
+
+    addLog(
+      'OK',
+      `↶ Đã hoàn tác: ${previousState.description} [Còn ${undoStackRef.current.length} bước lưu]`
+    );
+
+    setTimeout(() => {
+      triggerSolve();
+    }, 20);
+  }, [components, wires, selectedCompId, selectedWireId, addLog, triggerSolve]);
+
+  // Handle Redo (Ctrl+Y / Ctrl+Shift+Z)
+  const handleRedo = useCallback(() => {
+    if (redoStackRef.current.length === 0) {
+      return;
+    }
+
+    // Save current state into undo stack
+    const currentState: CircuitHistoryEntry = {
+      components: JSON.parse(JSON.stringify(components)),
+      wires: JSON.parse(JSON.stringify(wires)),
+      selectedCompId,
+      selectedWireId,
+      description: 'Trước khi làm lại',
+    };
+    undoStackRef.current = [...undoStackRef.current.slice(-19), currentState];
+
+    // Pop next state from redo stack
+    const nextState = redoStackRef.current.pop()!;
+    setCanUndo(true);
+    setCanRedo(redoStackRef.current.length > 0);
+
+    // Apply next state
+    setComponents(nextState.components);
+    setWires(nextState.wires);
+    setSelectedCompId(nextState.selectedCompId);
+    setSelectedWireId(nextState.selectedWireId);
+
+    addLog('OK', `↷ Đã làm lại (Redo): ${nextState.description}`);
+
+    setTimeout(() => {
+      triggerSolve();
+    }, 20);
+  }, [components, wires, selectedCompId, selectedWireId, addLog, triggerSolve]);
+
+  // Global Keyboard Listener for Ctrl+Z / Ctrl+Y
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handleUndo, handleRedo]);
 
   // Assemble Source Code
   const handleAssemble = useCallback((): boolean => {
@@ -450,6 +604,7 @@ export default function App() {
       return;
     }
 
+    pushHistory(`Thêm ${newComp.name} (${newComp.type})`);
     setComponents([...components, newComp]);
     setSelectedCompId(newId);
     triggerSolve();
@@ -682,6 +837,37 @@ export default function App() {
             <span>🔄</span> Reset
           </button>
 
+          {/* Undo / Redo Buttons */}
+          <div className="flex items-center gap-1 ml-1 pl-1 border-l border-slate-800">
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              className={`flex items-center gap-1 px-2 py-1 rounded transition-colors text-xs ${
+                canUndo
+                  ? 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700'
+                  : 'bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed'
+              }`}
+              title="Hoàn tác thao tác mạch (Ctrl+Z)"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Hoàn tác</span>
+            </button>
+
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              className={`flex items-center gap-1 px-2 py-1 rounded transition-colors text-xs ${
+                canRedo
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                  : 'bg-slate-900/40 text-slate-600 border border-slate-800/40 cursor-not-allowed'
+              }`}
+              title="Làm lại thao tác mạch (Ctrl+Y hoặc Ctrl+Shift+Z)"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Làm lại</span>
+            </button>
+          </div>
+
           {/* Speed Selector */}
           <div className="flex items-center gap-1 ml-2 pl-2 border-l border-slate-800 text-slate-400">
             <span>Tốc độ:</span>
@@ -872,6 +1058,8 @@ export default function App() {
             pinVoltages={pinVoltages}
             componentCurrents={compCurrents}
             onTriggerSolve={triggerSolve}
+            onPushHistory={pushHistory}
+            onPushCustomSnapshot={pushCustomSnapshot}
           />
         </div>
 
@@ -936,19 +1124,24 @@ export default function App() {
                 selectedComponent={selectedComponent}
                 selectedWire={selectedWire}
                 onUpdateComponent={(updated) => {
+                  pushHistory(`Sửa thông số ${updated.name || updated.type}`);
                   setComponents(components.map((c) => (c.id === updated.id ? updated : c)));
                   triggerSolve();
                 }}
                 onDeleteComponent={(id) => {
+                  const comp = components.find((c) => c.id === id);
+                  pushHistory(`Xóa ${comp?.name || id}`);
                   setComponents(components.filter((c) => c.id !== id));
                   setWires(wires.filter((w) => w.fromPin?.compId !== id && w.toPin?.compId !== id));
                   setSelectedCompId(null);
                   triggerSolve();
                 }}
                 onUpdateWire={(updated) => {
+                  pushHistory('Đổi màu dây');
                   setWires(wires.map((w) => (w.id === updated.id ? updated : w)));
                 }}
                 onDeleteWire={(id) => {
+                  pushHistory('Xóa dây dẫn');
                   setWires(wires.filter((w) => w.id !== id));
                   setSelectedWireId(null);
                   triggerSolve();
