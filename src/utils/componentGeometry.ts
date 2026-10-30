@@ -39,7 +39,15 @@ export function getPinWorldPos(comp: CircuitComponent, pin: PinState): { x: numb
   let dx = pin.relX - cx;
   let dy = pin.relY - cy;
 
-  // 1. Rotation (degrees clockwise)
+  // 1. Flip Horizontal & Vertical (applied in local space)
+  if (comp.flipH) {
+    dx = -dx;
+  }
+  if (comp.flipV) {
+    dy = -dy;
+  }
+
+  // 2. Rotation (degrees clockwise)
   const rot = (((comp.rotation || 0) % 360) + 360) % 360;
   if (rot === 90) {
     const tmp = dx;
@@ -52,16 +60,6 @@ export function getPinWorldPos(comp: CircuitComponent, pin: PinState): { x: numb
     const tmp = dx;
     dx = dy;
     dy = -tmp;
-  }
-
-  // 2. Flip Horizontal
-  if (comp.flipH) {
-    dx = -dx;
-  }
-
-  // 3. Flip Vertical
-  if (comp.flipV) {
-    dy = -dy;
   }
 
   return {

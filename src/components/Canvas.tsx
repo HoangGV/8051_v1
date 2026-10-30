@@ -193,7 +193,14 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   // 1. TRANSFORM ACTIONS: Xoay phải, Xoay trái, Lật ngang, Lật dọc
   const handleRotateClockwise = (targetCompId?: string) => {
-    const targetIds = targetCompId ? [targetCompId] : activeCompIds;
+    const targetIds =
+      targetCompId && !activeCompIds.includes(targetCompId)
+        ? [targetCompId]
+        : activeCompIds.length > 0
+        ? activeCompIds
+        : targetCompId
+        ? [targetCompId]
+        : [];
     if (targetIds.length === 0) return;
     const idSet = new Set(targetIds);
 
@@ -212,7 +219,14 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleRotateCounterClockwise = (targetCompId?: string) => {
-    const targetIds = targetCompId ? [targetCompId] : activeCompIds;
+    const targetIds =
+      targetCompId && !activeCompIds.includes(targetCompId)
+        ? [targetCompId]
+        : activeCompIds.length > 0
+        ? activeCompIds
+        : targetCompId
+        ? [targetCompId]
+        : [];
     if (targetIds.length === 0) return;
     const idSet = new Set(targetIds);
 
@@ -231,7 +245,14 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleFlipHorizontal = (targetCompId?: string) => {
-    const targetIds = targetCompId ? [targetCompId] : activeCompIds;
+    const targetIds =
+      targetCompId && !activeCompIds.includes(targetCompId)
+        ? [targetCompId]
+        : activeCompIds.length > 0
+        ? activeCompIds
+        : targetCompId
+        ? [targetCompId]
+        : [];
     if (targetIds.length === 0) return;
     const idSet = new Set(targetIds);
 
@@ -250,7 +271,14 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleFlipVertical = (targetCompId?: string) => {
-    const targetIds = targetCompId ? [targetCompId] : activeCompIds;
+    const targetIds =
+      targetCompId && !activeCompIds.includes(targetCompId)
+        ? [targetCompId]
+        : activeCompIds.length > 0
+        ? activeCompIds
+        : targetCompId
+        ? [targetCompId]
+        : [];
     if (targetIds.length === 0) return;
     const idSet = new Set(targetIds);
 
@@ -273,18 +301,23 @@ export const Canvas: React.FC<CanvasProps> = ({
     const targetWire = wires.find((w) => w.id === wireId);
     if (!targetWire) return;
 
+    const snapPt = {
+      x: Math.round(pt.x / 10) * 10,
+      y: Math.round(pt.y / 10) * 10,
+    };
+
     // Insert junction point into target wire
-    const updatedTargetWire = insertPointIntoWire(targetWire, pt);
+    const updatedTargetWire = insertPointIntoWire(targetWire, snapPt);
     const updatedWires = wires.map((w) => (w.id === wireId ? updatedTargetWire : w));
     onUpdateWires(updatedWires);
 
     // Start branch wiring from this coordinate
     setWiringStart({
       fromWireId: wireId,
-      x: pt.x,
-      y: pt.y,
+      x: snapPt.x,
+      y: snapPt.y,
     });
-    setWiringPoints([pt]);
+    setWiringPoints([snapPt]);
     setContextMenu(null);
     onLogMessage?.('INFO', 'Đang nối dây từ nhánh... Nhấp vào chân linh kiện hoặc đoạn dây khác để nối lại.');
   };
@@ -295,17 +328,22 @@ export const Canvas: React.FC<CanvasProps> = ({
     const targetWire = wires.find((w) => w.id === targetWireId);
     if (!targetWire) return;
 
+    const snapPt = {
+      x: Math.round(pt.x / 10) * 10,
+      y: Math.round(pt.y / 10) * 10,
+    };
+
     // Insert junction point into target wire
-    const updatedTargetWire = insertPointIntoWire(targetWire, pt);
+    const updatedTargetWire = insertPointIntoWire(targetWire, snapPt);
     const currentWires = wires.map((w) => (w.id === targetWireId ? updatedTargetWire : w));
 
     // Construct final wire points
     const finalPoints = [...wiringPoints];
     const lastPoint = finalPoints[finalPoints.length - 1];
-    if (lastPoint.x !== pt.x && lastPoint.y !== pt.y) {
-      finalPoints.push({ x: pt.x, y: lastPoint.y });
+    if (lastPoint.x !== snapPt.x && lastPoint.y !== snapPt.y) {
+      finalPoints.push({ x: snapPt.x, y: lastPoint.y });
     }
-    finalPoints.push({ x: pt.x, y: pt.y });
+    finalPoints.push(snapPt);
 
     const newWire: Wire = {
       id: `wire_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -966,70 +1004,67 @@ export const Canvas: React.FC<CanvasProps> = ({
       }}
     >
       {/* 1. TOP-LEFT QUICK ACTION HUD: Selection info, Copy, Paste, Duplicate, Delete */}
-      <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5 bg-[#161b22]/90 backdrop-blur border border-slate-700/80 rounded-lg p-1.5 shadow-xl text-xs text-slate-300">
-        {activeCompIds.length > 0 ? (
-          <>
-            <span className="px-2 py-0.5 bg-cyan-950 border border-cyan-700 text-cyan-300 font-mono font-bold rounded text-[11px]">
-              {activeCompIds.length} đã chọn
-            </span>
-            <button
-              onClick={() => handleRotateClockwise()}
-              className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
-              title="Xoay phải 90° (R)"
-            >
-              <span>Xoay ↻</span>
-              <kbd className="text-[10px] text-slate-400 font-mono">R</kbd>
-            </button>
-            <button
-              onClick={() => handleFlipHorizontal()}
-              className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
-              title="Lật ngang linh kiện"
-            >
-              <span>Lật ⇋</span>
-            </button>
-            <button
-              onClick={handleCopy}
-              className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
-              title="Sao chép linh kiện đã chọn (Ctrl + C)"
-            >
-              <span>Sao chép</span>
-              <kbd className="text-[10px] text-slate-400 font-mono">^C</kbd>
-            </button>
-            <button
-              onClick={handleDuplicate}
-              className="px-2 py-1 rounded hover:bg-cyan-900/60 hover:text-cyan-200 text-cyan-400 font-semibold flex items-center gap-1 transition-colors"
-              title="Nhân bản tức thì linh kiện đã chọn (Ctrl + D)"
-            >
-              <span>Nhân bản</span>
-              <kbd className="text-[10px] text-cyan-300/80 font-mono">^D</kbd>
-            </button>
-            <button
-              onClick={handleDeleteSelection}
-              className="px-2 py-1 rounded hover:bg-rose-950 hover:text-rose-300 text-rose-400 flex items-center gap-1 transition-colors"
-              title="Xóa linh kiện đã chọn (Delete / Backspace)"
-            >
-              <span>Xóa</span>
-              <kbd className="text-[10px] text-rose-400/80 font-mono">Del</kbd>
-            </button>
-          </>
-        ) : (
-          <div className="px-2 py-0.5 text-slate-400 text-[11px] flex items-center gap-2">
-            <span className="text-cyan-400">💡 Chuột phải:</span>
-            <span>Chuột phải vào linh kiện (xoay/lật) hoặc chuột phải vào dây để <b>nối nhánh</b></span>
-          </div>
-        )}
+      {(activeCompIds.length > 0 || hasClipboard || clipboardRef.current) && (
+        <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5 bg-[#161b22]/90 backdrop-blur border border-slate-700/80 rounded-lg p-1.5 shadow-xl text-xs text-slate-300">
+          {activeCompIds.length > 0 && (
+            <>
+              <span className="px-2 py-0.5 bg-cyan-950 border border-cyan-700 text-cyan-300 font-mono font-bold rounded text-[11px]">
+                {activeCompIds.length} đã chọn
+              </span>
+              <button
+                onClick={() => handleRotateClockwise()}
+                className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
+                title="Xoay phải 90° (R)"
+              >
+                <span>Xoay ↻</span>
+                <kbd className="text-[10px] text-slate-400 font-mono">R</kbd>
+              </button>
+              <button
+                onClick={() => handleFlipHorizontal()}
+                className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
+                title="Lật ngang linh kiện"
+              >
+                <span>Lật ⇋</span>
+              </button>
+              <button
+                onClick={handleCopy}
+                className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
+                title="Sao chép linh kiện đã chọn (Ctrl + C)"
+              >
+                <span>Sao chép</span>
+                <kbd className="text-[10px] text-slate-400 font-mono">^C</kbd>
+              </button>
+              <button
+                onClick={handleDuplicate}
+                className="px-2 py-1 rounded hover:bg-cyan-900/60 hover:text-cyan-200 text-cyan-400 font-semibold flex items-center gap-1 transition-colors"
+                title="Nhân bản tức thì linh kiện đã chọn (Ctrl + D)"
+              >
+                <span>Nhân bản</span>
+                <kbd className="text-[10px] text-cyan-300/80 font-mono">^D</kbd>
+              </button>
+              <button
+                onClick={handleDeleteSelection}
+                className="px-2 py-1 rounded hover:bg-rose-950 hover:text-rose-300 text-rose-400 flex items-center gap-1 transition-colors"
+                title="Xóa linh kiện đã chọn (Delete / Backspace)"
+              >
+                <span>Xóa</span>
+                <kbd className="text-[10px] text-rose-400/80 font-mono">Del</kbd>
+              </button>
+            </>
+          )}
 
-        {(hasClipboard || clipboardRef.current) && (
-          <button
-            onClick={handlePaste}
-            className="px-2 py-1 ml-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1 transition-colors"
-            title="Dán linh kiện từ bộ nhớ tạm (Ctrl + V)"
-          >
-            <span>Dán</span>
-            <kbd className="text-[10px] text-slate-400 font-mono">^V</kbd>
-          </button>
-        )}
-      </div>
+          {(hasClipboard || clipboardRef.current) && (
+            <button
+              onClick={handlePaste}
+              className="px-2 py-1 ml-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1 transition-colors"
+              title="Dán linh kiện từ bộ nhớ tạm (Ctrl + V)"
+            >
+              <span>Dán</span>
+              <kbd className="text-[10px] text-slate-400 font-mono">^V</kbd>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 2. TOP-RIGHT ZOOM / PAN CONTROLS HUD */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-1 bg-[#161b22]/90 backdrop-blur border border-slate-700/80 rounded-lg p-1 shadow-lg text-xs text-slate-300">
@@ -1108,6 +1143,14 @@ export const Canvas: React.FC<CanvasProps> = ({
             <g
               key={wire.id}
               className="pointer-events-auto cursor-pointer"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                if (e.button === 0 && wiringStart) {
+                  const preciseWorldPos = screenToWorld(e.clientX, e.clientY, false);
+                  const snap = getClosestPointOnWire(wire, preciseWorldPos);
+                  handleFinishWireToWire(wire.id, snap ? snap.point : screenToWorld(e.clientX, e.clientY));
+                }
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 if (wiringStart) {
@@ -1320,36 +1363,54 @@ export const Canvas: React.FC<CanvasProps> = ({
             left: `${Math.min(window.innerWidth - 230, contextMenu.x)}px`,
             top: `${Math.min(window.innerHeight - 340, contextMenu.y)}px`,
           }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
           {contextMenu.type === 'component' && (
             <>
               <div className="px-3 py-1 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
-                Linh Kiện ({activeCompIds.length} mục)
+                Linh Kiện ({activeCompIds.length || 1} mục)
               </div>
               <button
-                onClick={() => handleRotateClockwise(contextMenu.targetCompId)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  handleRotateClockwise(contextMenu.targetCompId);
+                  setContextMenu(null);
+                }}
                 className="w-full px-3 py-1.5 text-left hover:bg-cyan-950/80 hover:text-cyan-300 flex items-center justify-between"
               >
                 <span className="flex items-center gap-2">🔄 Xoay phải 90°</span>
                 <span className="text-[10px] text-slate-500 font-mono">CW</span>
               </button>
               <button
-                onClick={() => handleRotateCounterClockwise(contextMenu.targetCompId)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  handleRotateCounterClockwise(contextMenu.targetCompId);
+                  setContextMenu(null);
+                }}
                 className="w-full px-3 py-1.5 text-left hover:bg-cyan-950/80 hover:text-cyan-300 flex items-center justify-between"
               >
                 <span className="flex items-center gap-2">↺ Xoay trái 90°</span>
                 <span className="text-[10px] text-slate-500 font-mono">CCW</span>
               </button>
               <button
-                onClick={() => handleFlipHorizontal(contextMenu.targetCompId)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  handleFlipHorizontal(contextMenu.targetCompId);
+                  setContextMenu(null);
+                }}
                 className="w-full px-3 py-1.5 text-left hover:bg-cyan-950/80 hover:text-cyan-300 flex items-center justify-between"
               >
                 <span className="flex items-center gap-2">⇋ Lật ngang</span>
                 <span className="text-[10px] text-slate-500 font-mono">Flip H</span>
               </button>
               <button
-                onClick={() => handleFlipVertical(contextMenu.targetCompId)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  handleFlipVertical(contextMenu.targetCompId);
+                  setContextMenu(null);
+                }}
                 className="w-full px-3 py-1.5 text-left hover:bg-cyan-950/80 hover:text-cyan-300 flex items-center justify-between"
               >
                 <span className="flex items-center gap-2">⇅ Lật dọc</span>
@@ -1357,6 +1418,7 @@ export const Canvas: React.FC<CanvasProps> = ({
               </button>
               <div className="my-1 border-t border-slate-800" />
               <button
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   handleDuplicate();
                   setContextMenu(null);
@@ -1367,6 +1429,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                 <span className="text-[10px] text-slate-500 font-mono">Ctrl+D</span>
               </button>
               <button
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   handleCopy();
                   setContextMenu(null);
@@ -1378,6 +1441,7 @@ export const Canvas: React.FC<CanvasProps> = ({
               </button>
               <div className="my-1 border-t border-slate-800" />
               <button
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   handleDeleteSelection();
                   setContextMenu(null);
@@ -1397,7 +1461,11 @@ export const Canvas: React.FC<CanvasProps> = ({
               </div>
               {contextMenu.wirePoint && (
                 <button
-                  onClick={() => handleStartWireFromWire(contextMenu.targetWireId!, contextMenu.wirePoint!)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    handleStartWireFromWire(contextMenu.targetWireId!, contextMenu.wirePoint!);
+                    setContextMenu(null);
+                  }}
                   className="w-full px-3 py-2 text-left bg-cyan-950/50 hover:bg-cyan-900 text-cyan-300 font-semibold flex items-center gap-2"
                 >
                   <span>⚡ Nối dây từ điểm này (Tạo nhánh)</span>
@@ -1408,6 +1476,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                 {['#38bdf8', '#ef4444', '#10b981', '#f59e0b', '#a855f7', '#64748b'].map((col) => (
                   <button
                     key={col}
+                    onMouseDown={(e) => e.stopPropagation()}
                     onClick={() => {
                       if (contextMenu.targetWireId) {
                         const updated = wires.map((w) =>
@@ -1424,6 +1493,7 @@ export const Canvas: React.FC<CanvasProps> = ({
               </div>
               <div className="my-1 border-t border-slate-800" />
               <button
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   if (contextMenu.targetWireId) {
                     onPushHistory?.('Xóa dây dẫn');
@@ -1447,6 +1517,7 @@ export const Canvas: React.FC<CanvasProps> = ({
               </div>
               {(hasClipboard || clipboardRef.current) && (
                 <button
+                  onMouseDown={(e) => e.stopPropagation()}
                   onClick={() => {
                     handlePaste();
                     setContextMenu(null);
@@ -1458,6 +1529,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                 </button>
               )}
               <button
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   handleSelectAll();
                   setContextMenu(null);
@@ -1468,6 +1540,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                 <span className="text-[10px] text-slate-500 font-mono">Ctrl+A</span>
               </button>
               <button
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   setZoom(1.0);
                   setPan({ x: 40, y: 30 });

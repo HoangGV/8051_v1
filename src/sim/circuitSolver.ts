@@ -63,7 +63,7 @@ export class CircuitSolver {
       for (const pin of comp.pins) {
         const pinKey = `${comp.id}:${pin.id}`;
         const pinPos = getPinWorldPos(comp, pin);
-        pinCoordMap.set(`${pinPos.x},${pinPos.y}`, pinKey);
+        pinCoordMap.set(`${Math.round(pinPos.x)},${Math.round(pinPos.y)}`, pinKey);
         find(pinKey);
       }
     }
@@ -93,6 +93,44 @@ export class CircuitSolver {
       }
       if (wire.toPin) {
         union(wireKey, `${wire.toPin.compId}:${wire.toPin.pinId}`);
+      }
+    }
+
+    // Proximity unioning for wire-to-wire branch intersections
+    for (let a = 0; a < wires.length; a++) {
+      for (let b = a + 1; b < wires.length; b++) {
+        const wireA = wires[a];
+        const wireB = wires[b];
+        let connected = false;
+        for (const ptA of wireA.points) {
+          for (const ptB of wireB.points) {
+            if (Math.hypot(ptA.x - ptB.x, ptA.y - ptB.y) <= 8) {
+              union(`wire:${wireA.id}`, `wire:${wireB.id}`);
+              connected = true;
+              break;
+            }
+          }
+          if (connected) break;
+        }
+      }
+    }
+
+    // Proximity unioning for wire-to-pin connections
+    for (const comp of components) {
+      for (const pin of comp.pins) {
+        const pinKey = `${comp.id}:${pin.id}`;
+        const pinPos = getPinWorldPos(comp, pin);
+        for (const wire of wires) {
+          if (!wire.points || wire.points.length === 0) continue;
+          const pStart = wire.points[0];
+          const pEnd = wire.points[wire.points.length - 1];
+          if (
+            Math.hypot(pStart.x - pinPos.x, pStart.y - pinPos.y) <= 8 ||
+            Math.hypot(pEnd.x - pinPos.x, pEnd.y - pinPos.y) <= 8
+          ) {
+            union(`wire:${wire.id}`, pinKey);
+          }
+        }
       }
     }
 

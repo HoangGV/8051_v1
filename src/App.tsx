@@ -18,6 +18,7 @@ import { PREBUILT_EXAMPLES } from './examples/prebuiltCircuits';
 import { Assembler8051 } from './sim/assembler';
 import { CircuitSolver, SolverResult } from './sim/circuitSolver';
 import { Cpu8051 } from './sim/cpu8051';
+import { getPinWorldPos } from './utils/componentGeometry';
 import {
   AssembleError,
   AssembleResult,
@@ -1227,6 +1228,29 @@ export default function App() {
                 onUpdateComponent={(updated) => {
                   pushHistory(`Sửa thông số ${updated.name || updated.type}`);
                   setComponents(components.map((c) => (c.id === updated.id ? updated : c)));
+                  setWires((prevWires) =>
+                    prevWires.map((w) => {
+                      let pts = [...w.points];
+                      let changed = false;
+                      if (w.fromPin && w.fromPin.compId === updated.id) {
+                        const pin = updated.pins.find((p) => p.id === w.fromPin!.pinId);
+                        if (pin) {
+                          const newPos = getPinWorldPos(updated, pin);
+                          pts[0] = { x: newPos.x, y: newPos.y };
+                          changed = true;
+                        }
+                      }
+                      if (w.toPin && w.toPin.compId === updated.id) {
+                        const pin = updated.pins.find((p) => p.id === w.toPin!.pinId);
+                        if (pin) {
+                          const newPos = getPinWorldPos(updated, pin);
+                          pts[pts.length - 1] = { x: newPos.x, y: newPos.y };
+                          changed = true;
+                        }
+                      }
+                      return changed ? { ...w, points: pts } : w;
+                    })
+                  );
                   triggerSolve();
                 }}
                 onDeleteComponent={(id) => {
