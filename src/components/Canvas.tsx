@@ -1,13 +1,21 @@
 /**
  * SimulIDE-Style Interactive Schematic Circuit Canvas
  * Real-time SVG rendering, Manhattan orthogonal wiring, junction dots,
- * pin tracking on component drag, component rotation, net highlighting,
- * interactive buttons/switches, live meter readouts,
+ * pin tracking on component drag, component rotation & flipping,
+ * wire-to-wire branch connections (T-junctions),
+ * right-click context menu (xoay trái, xoay phải, lật dọc, lật ngang, nối nhánh dây),
  * box-marquee selection, multi-component dragging, copy, paste, and duplicate.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { CircuitComponent, PinState, Wire } from '../types';
+import {
+  getClosestPointOnWire,
+  getComponentHeight,
+  getComponentWidth,
+  getPinWorldPos,
+  insertPointIntoWire,
+} from '../utils/componentGeometry';
 
 interface CanvasProps {
   components: CircuitComponent[];
@@ -39,6 +47,15 @@ interface BoxSelectState {
   currentY: number;
   active: boolean;
   additive: boolean;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  type: 'component' | 'wire' | 'canvas';
+  targetCompId?: string;
+  targetWireId?: string;
+  wirePoint?: { x: number; y: number };
 }
 
 export const Canvas: React.FC<CanvasProps> = ({
@@ -84,18 +101,28 @@ export const Canvas: React.FC<CanvasProps> = ({
   // Box-selection (marquee) state
   const [boxSelect, setBoxSelect] = useState<BoxSelectState | null>(null);
 
+  // Right-click Context Menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
   // Clipboard for copy & duplicate operations
   const clipboardRef = useRef<{ components: CircuitComponent[]; wires: Wire[] } | null>(null);
   const [hasClipboard, setHasClipboard] = useState(false);
 
-  // Wiring state
-  const [wiringStart, setWiringStart] = useState<{ compId: string; pinId: string; x: number; y: number } | null>(null);
+  // Wiring state (can start from a pin OR from an existing wire branch)
+  const [wiringStart, setWiringStart] = useState<{
+    compId?: string;
+    pinId?: string;
+    fromWireId?: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [wiringPoints, setWiringPoints] = useState<{ x: number; y: number }[]>([]);
   const [currentMousePos, setCurrentMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Hovered items
+  // Hovered items & Wire snap indicator for branching
   const [hoveredPin, setHoveredPin] = useState<{ compId: string; pin: PinState; x: number; y: number } | null>(null);
   const [hoveredWireId, setHoveredWireId] = useState<string | null>(null);
+  const [wireSnapPreview, setWireSnapPreview] = useState<{ wireId: string; x: number; y: number } | null>(null);
 
   // Convert mouse screen coordinates to canvas world coordinates
   const screenToWorld = (screenX: number, screenY: number, snapGrid = true) => {
@@ -125,19 +152,188 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
-  // 1. COPY OPERATION
-  const handleCopy = () => {
-    if (activeCompIds.length === 0) {
-      if (activeWireIds.length > 0) {
-        onLogMessage?.('INFO', 'Hãy chọn ít nhất 1 linh kiện để sao chép.');
+  // Close context menu on global click or Escape
+  useEffect(() => {
+    const handleGlobalClick = () => setContextMenu(null);
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
+
+  // Update attached wires when component rotates or flips so wires track pins
+  const updateWiresOnCompTransform = (updatedComps: CircuitComponent[]) => {
+    const updatedWires = wires.map((w) => {
+      let pts = [...w.points];
+      let changed = false;
+
+      if (w.fromPin) {
+        const comp = updatedComps.find((c) => c.id === w.fromPin!.compId);
+        const pin = comp?.pins.find((p) => p.id === w.fromPin!.pinId);
+        if (comp && pin) {
+          const newPos = getPinWorldPos(comp, pin);
+          pts[0] = { x: newPos.x, y: newPos.y };
+          changed = true;
+        }
       }
-      return;
+
+      if (w.toPin) {
+        const comp = updatedComps.find((c) => c.id === w.toPin!.compId);
+        const pin = comp?.pins.find((p) => p.id === w.toPin!.pinId);
+        if (comp && pin) {
+          const newPos = getPinWorldPos(comp, pin);
+          pts[pts.length - 1] = { x: newPos.x, y: newPos.y };
+          changed = true;
+        }
+      }
+
+      return changed ? { ...w, points: pts } : w;
+    });
+
+    onUpdateWires(updatedWires);
+  };
+
+  // 1. TRANSFORM ACTIONS: Xoay phải, Xoay trái, Lật ngang, Lật dọc
+  const handleRotateClockwise = (targetCompId?: string) => {
+    const targetIds = targetCompId ? [targetCompId] : activeCompIds;
+    if (targetIds.length === 0) return;
+    const idSet = new Set(targetIds);
+
+    onPushHistory?.(`Xoay phải 90° (${targetIds.length} linh kiện)`);
+    const updatedComps = components.map((c) => {
+      if (idSet.has(c.id)) {
+        return { ...c, rotation: ((c.rotation || 0) + 90) % 360 };
+      }
+      return c;
+    });
+    onUpdateComponents(updatedComps);
+    updateWiresOnCompTransform(updatedComps);
+    onTriggerSolve();
+    setContextMenu(null);
+    onLogMessage?.('INFO', `Đã xoay phải 90° ${targetIds.length} linh kiện.`);
+  };
+
+  const handleRotateCounterClockwise = (targetCompId?: string) => {
+    const targetIds = targetCompId ? [targetCompId] : activeCompIds;
+    if (targetIds.length === 0) return;
+    const idSet = new Set(targetIds);
+
+    onPushHistory?.(`Xoay trái 90° (${targetIds.length} linh kiện)`);
+    const updatedComps = components.map((c) => {
+      if (idSet.has(c.id)) {
+        return { ...c, rotation: ((c.rotation || 0) + 270) % 360 };
+      }
+      return c;
+    });
+    onUpdateComponents(updatedComps);
+    updateWiresOnCompTransform(updatedComps);
+    onTriggerSolve();
+    setContextMenu(null);
+    onLogMessage?.('INFO', `Đã xoay trái 90° ${targetIds.length} linh kiện.`);
+  };
+
+  const handleFlipHorizontal = (targetCompId?: string) => {
+    const targetIds = targetCompId ? [targetCompId] : activeCompIds;
+    if (targetIds.length === 0) return;
+    const idSet = new Set(targetIds);
+
+    onPushHistory?.(`Lật ngang (${targetIds.length} linh kiện)`);
+    const updatedComps = components.map((c) => {
+      if (idSet.has(c.id)) {
+        return { ...c, flipH: !c.flipH };
+      }
+      return c;
+    });
+    onUpdateComponents(updatedComps);
+    updateWiresOnCompTransform(updatedComps);
+    onTriggerSolve();
+    setContextMenu(null);
+    onLogMessage?.('INFO', `Đã lật ngang ${targetIds.length} linh kiện.`);
+  };
+
+  const handleFlipVertical = (targetCompId?: string) => {
+    const targetIds = targetCompId ? [targetCompId] : activeCompIds;
+    if (targetIds.length === 0) return;
+    const idSet = new Set(targetIds);
+
+    onPushHistory?.(`Lật dọc (${targetIds.length} linh kiện)`);
+    const updatedComps = components.map((c) => {
+      if (idSet.has(c.id)) {
+        return { ...c, flipV: !c.flipV };
+      }
+      return c;
+    });
+    onUpdateComponents(updatedComps);
+    updateWiresOnCompTransform(updatedComps);
+    onTriggerSolve();
+    setContextMenu(null);
+    onLogMessage?.('INFO', `Đã lật dọc ${targetIds.length} linh kiện.`);
+  };
+
+  // 2. WIRE-TO-WIRE BRANCHING ACTIONS
+  const handleStartWireFromWire = (wireId: string, pt: { x: number; y: number }) => {
+    const targetWire = wires.find((w) => w.id === wireId);
+    if (!targetWire) return;
+
+    // Insert junction point into target wire
+    const updatedTargetWire = insertPointIntoWire(targetWire, pt);
+    const updatedWires = wires.map((w) => (w.id === wireId ? updatedTargetWire : w));
+    onUpdateWires(updatedWires);
+
+    // Start branch wiring from this coordinate
+    setWiringStart({
+      fromWireId: wireId,
+      x: pt.x,
+      y: pt.y,
+    });
+    setWiringPoints([pt]);
+    setContextMenu(null);
+    onLogMessage?.('INFO', 'Đang nối dây từ nhánh... Nhấp vào chân linh kiện hoặc đoạn dây khác để nối lại.');
+  };
+
+  const handleFinishWireToWire = (targetWireId: string, pt: { x: number; y: number }) => {
+    if (!wiringStart) return;
+
+    const targetWire = wires.find((w) => w.id === targetWireId);
+    if (!targetWire) return;
+
+    // Insert junction point into target wire
+    const updatedTargetWire = insertPointIntoWire(targetWire, pt);
+    const currentWires = wires.map((w) => (w.id === targetWireId ? updatedTargetWire : w));
+
+    // Construct final wire points
+    const finalPoints = [...wiringPoints];
+    const lastPoint = finalPoints[finalPoints.length - 1];
+    if (lastPoint.x !== pt.x && lastPoint.y !== pt.y) {
+      finalPoints.push({ x: pt.x, y: lastPoint.y });
     }
+    finalPoints.push({ x: pt.x, y: pt.y });
+
+    const newWire: Wire = {
+      id: `wire_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      points: finalPoints,
+      color: '#38bdf8',
+      fromPin:
+        wiringStart.compId && wiringStart.pinId
+          ? { compId: wiringStart.compId, pinId: wiringStart.pinId }
+          : undefined,
+    };
+
+    onPushHistory?.('Nối dây nhánh (Junction)');
+    onUpdateWires([...currentWires, newWire]);
+    setWiringStart(null);
+    setWiringPoints([]);
+    setWireSnapPreview(null);
+    setContextMenu(null);
+    onTriggerSolve();
+    onLogMessage?.('OK', 'Đã nối 2 đoạn dây thành công tại điểm nút nhánh.');
+  };
+
+  // 3. COPY, PASTE, DUPLICATE, DELETE
+  const handleCopy = () => {
+    if (activeCompIds.length === 0) return;
 
     const compsToCopy = components.filter((c) => activeCompIds.includes(c.id));
     const compIdSet = new Set(activeCompIds);
 
-    // Intra-wires connecting between selected components
     const wiresToCopy = wires.filter(
       (w) => w.fromPin && compIdSet.has(w.fromPin.compId) && w.toPin && compIdSet.has(w.toPin.compId)
     );
@@ -150,18 +346,13 @@ export const Canvas: React.FC<CanvasProps> = ({
     onLogMessage?.('INFO', `Đã sao chép ${compsToCopy.length} linh kiện (Bấm Ctrl+V để dán).`);
   };
 
-  // 2. PASTE OPERATION
   const handlePaste = () => {
-    if (!clipboardRef.current || clipboardRef.current.components.length === 0) {
-      onLogMessage?.('WARN', 'Bộ nhớ tạm đang trống. Hãy chọn linh kiện và bấm Ctrl+C trước.');
-      return;
-    }
+    if (!clipboardRef.current || clipboardRef.current.components.length === 0) return;
 
     const { components: clipComps, wires: clipWires } = clipboardRef.current;
     const idMap = new Map<string, string>();
     const offset = 40;
 
-    // Create new components with unique IDs and shifted positions
     const newComps: CircuitComponent[] = clipComps.map((c) => {
       const newId = `${c.type}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
       idMap.set(c.id, newId);
@@ -174,7 +365,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       };
     });
 
-    // Create new wires connecting the newly pasted components
     const newWires: Wire[] = clipWires.map((w) => {
       const newWireId = `wire_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
       return {
@@ -190,11 +380,9 @@ export const Canvas: React.FC<CanvasProps> = ({
     onUpdateComponents([...components, ...newComps]);
     onUpdateWires([...wires, ...newWires]);
 
-    // Select the newly pasted components
     const newIds = newComps.map((c) => c.id);
     setSelection(newIds, []);
 
-    // Cascade offset for repeated pastes
     clipboardRef.current.components = clipComps.map((c) => ({ ...c, x: c.x + 20, y: c.y + 20 }));
     clipboardRef.current.wires = clipWires.map((w) => ({
       ...w,
@@ -205,7 +393,6 @@ export const Canvas: React.FC<CanvasProps> = ({
     onLogMessage?.('OK', `Đã dán ${newComps.length} linh kiện.`);
   };
 
-  // 3. DUPLICATE OPERATION (Instant copy & paste at offset)
   const handleDuplicate = () => {
     if (activeCompIds.length === 0) return;
 
@@ -253,7 +440,6 @@ export const Canvas: React.FC<CanvasProps> = ({
     onLogMessage?.('OK', `Đã nhân bản ${newComps.length} linh kiện.`);
   };
 
-  // 4. DELETE SELECTED ITEMS
   const handleDeleteSelection = () => {
     if (activeCompIds.length === 0 && activeWireIds.length === 0) return;
 
@@ -278,22 +464,6 @@ export const Canvas: React.FC<CanvasProps> = ({
     onLogMessage?.('INFO', `Đã xóa ${count} thành phần.`);
   };
 
-  // 5. ROTATE SELECTED COMPONENTS
-  const handleRotateSelection = () => {
-    if (activeCompIds.length === 0) return;
-    onPushHistory?.(`Xoay ${activeCompIds.length} linh kiện 90°`);
-    const compSet = new Set(activeCompIds);
-    const updated = components.map((c) => {
-      if (compSet.has(c.id)) {
-        return { ...c, rotation: ((c.rotation || 0) + 90) % 360 };
-      }
-      return c;
-    });
-    onUpdateComponents(updated);
-    onTriggerSolve();
-  };
-
-  // 6. SELECT ALL
   const handleSelectAll = () => {
     setSelection(
       components.map((c) => c.id),
@@ -313,55 +483,55 @@ export const Canvas: React.FC<CanvasProps> = ({
         return;
       }
 
-      // Escape: Cancel wiring or clear selection
       if (e.key === 'Escape') {
-        if (wiringStart) {
+        if (contextMenu) {
+          setContextMenu(null);
+        } else if (wiringStart) {
           setWiringStart(null);
           setWiringPoints([]);
+          setWireSnapPreview(null);
         } else {
           setSelection([], []);
         }
         return;
       }
 
-      // Ctrl+C / Cmd+C: Copy
       if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
         handleCopy();
         return;
       }
 
-      // Ctrl+V / Cmd+V: Paste
       if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
         e.preventDefault();
         handlePaste();
         return;
       }
 
-      // Ctrl+D / Cmd+D: Duplicate
       if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
         handleDuplicate();
         return;
       }
 
-      // Ctrl+A / Cmd+A: Select All
       if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
         e.preventDefault();
         handleSelectAll();
         return;
       }
 
-      // R: Rotate selected
       if (e.key === 'r' || e.key === 'R') {
         if (activeCompIds.length > 0) {
           e.preventDefault();
-          handleRotateSelection();
+          if (e.shiftKey) {
+            handleRotateCounterClockwise();
+          } else {
+            handleRotateClockwise();
+          }
         }
         return;
       }
 
-      // Delete / Backspace: Delete selected
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (activeCompIds.length > 0 || activeWireIds.length > 0) {
           e.preventDefault();
@@ -373,7 +543,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeCompIds, activeWireIds, components, wires, wiringStart]);
+  }, [activeCompIds, activeWireIds, components, wires, wiringStart, contextMenu]);
 
   // Handle Zoom via Mouse Wheel
   const handleWheel = (e: React.WheelEvent) => {
@@ -396,7 +566,10 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   // Mouse Down on Canvas (Pan, Wiring, or Start Marquee Box Selection)
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    // Middle click or Alt+Left click -> Pan
+    if (contextMenu) {
+      setContextMenu(null);
+    }
+
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
       e.preventDefault();
       setIsPanning(true);
@@ -406,11 +579,9 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     if (e.button === 0) {
       if (wiringStart) {
-        // Add a corner bend point
         const worldPos = screenToWorld(e.clientX, e.clientY);
         setWiringPoints([...wiringPoints, worldPos]);
       } else {
-        // Start marquee box selection
         const worldPos = screenToWorld(e.clientX, e.clientY, false);
         setBoxSelect({
           startX: worldPos.x,
@@ -438,6 +609,19 @@ export const Canvas: React.FC<CanvasProps> = ({
     const preciseWorldPos = screenToWorld(e.clientX, e.clientY, false);
     setCurrentMousePos(worldPos);
 
+    // If wiring is in progress, check if hovering near another wire to preview snap junction
+    if (wiringStart) {
+      let snapFound: { wireId: string; x: number; y: number } | null = null;
+      for (const w of wires) {
+        const snap = getClosestPointOnWire(w, preciseWorldPos);
+        if (snap && snap.dist < 15) {
+          snapFound = { wireId: w.id, x: snap.point.x, y: snap.point.y };
+          break;
+        }
+      }
+      setWireSnapPreview(snapFound);
+    }
+
     // Update Box Selection
     if (boxSelect?.active) {
       setBoxSelect((prev) =>
@@ -458,7 +642,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       const deltaY = worldPos.y - dragStartMouseWorldRef.current.y;
       const movingSet = new Set(dragStartPositionsRef.current.keys());
 
-      // Move components
       const updatedComps = components.map((c) => {
         const init = dragStartPositionsRef.current.get(c.id);
         if (init) {
@@ -468,7 +651,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       });
       onUpdateComponents(updatedComps);
 
-      // Move wires
       const updatedWires = wires.map((w) => {
         const fromMoving = w.fromPin && movingSet.has(w.fromPin.compId);
         const toMoving = w.toPin && movingSet.has(w.toPin.compId);
@@ -476,13 +658,11 @@ export const Canvas: React.FC<CanvasProps> = ({
 
         if (initW) {
           if (fromMoving && toMoving) {
-            // Both ends moving -> whole wire moves together!
             return {
               ...w,
               points: initW.points.map((pt) => ({ x: pt.x + deltaX, y: pt.y + deltaY })),
             };
           } else if (fromMoving || toMoving) {
-            // Only one end moving -> endpoint tracks moving pin
             const pts = initW.points.map((p) => ({ ...p }));
             if (fromMoving) {
               pts[0] = { x: pts[0].x + deltaX, y: pts[0].y + deltaY };
@@ -505,7 +685,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       setIsPanning(false);
     }
 
-    // Finalize Marquee Box Selection
     if (boxSelect?.active) {
       const minX = Math.min(boxSelect.startX, boxSelect.currentX);
       const maxX = Math.max(boxSelect.startX, boxSelect.currentX);
@@ -516,7 +695,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       const boxH = maxY - minY;
 
       if (boxW >= 8 || boxH >= 8) {
-        // Find intersecting components
         const hitCompIds: string[] = [];
         for (const comp of components) {
           const cw = getComponentWidth(comp);
@@ -527,7 +705,6 @@ export const Canvas: React.FC<CanvasProps> = ({
           }
         }
 
-        // Find intersecting wires
         const hitWireIds: string[] = [];
         for (const w of wires) {
           const wireInBox = w.points.some((pt) => pt.x >= minX && pt.x <= maxX && pt.y >= minY && pt.y <= maxY);
@@ -548,7 +725,6 @@ export const Canvas: React.FC<CanvasProps> = ({
           onLogMessage?.('INFO', `Đã quét chọn ${hitCompIds.length} linh kiện.`);
         }
       } else {
-        // Simple click without drag -> deselect if not additive
         if (!boxSelect.additive) {
           setSelection([], []);
         }
@@ -556,7 +732,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       setBoxSelect(null);
     }
 
-    // Finalize Component Dragging
     if (isDraggingComps) {
       if (dragInitialSnapshotRef.current && dragStartMouseWorldRef.current) {
         let maxMoved = 0;
@@ -588,6 +763,10 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   // Component Mouse Down: Handle selection and dragging
   const handleComponentMouseDown = (comp: CircuitComponent, e: React.MouseEvent) => {
+    if (e.button === 2) {
+      // Right click handled by onContextMenu
+      return;
+    }
     if (e.button !== 0) return;
     e.stopPropagation();
 
@@ -602,15 +781,14 @@ export const Canvas: React.FC<CanvasProps> = ({
       }
     } else {
       if (activeCompIds.includes(comp.id)) {
-        nextCompIds = activeCompIds; // Keep entire group selected when dragging
+        nextCompIds = activeCompIds;
       } else {
-        nextCompIds = [comp.id]; // Select only this one
+        nextCompIds = [comp.id];
       }
     }
 
     setSelection(nextCompIds, []);
 
-    // Setup multi-drag
     const movingComps = nextCompIds.includes(comp.id) ? nextCompIds : [comp.id];
     const startPositions = new Map<string, { x: number; y: number }>();
     for (const id of movingComps) {
@@ -638,17 +816,16 @@ export const Canvas: React.FC<CanvasProps> = ({
   // Pin Click for Wiring
   const handlePinClick = (comp: CircuitComponent, pin: PinState, e: React.MouseEvent) => {
     e.stopPropagation();
-    const pinWorldX = Math.round(comp.x + pin.relX);
-    const pinWorldY = Math.round(comp.y + pin.relY);
+    const pinPos = getPinWorldPos(comp, pin);
 
     if (!wiringStart) {
       setWiringStart({
         compId: comp.id,
         pinId: pin.id,
-        x: pinWorldX,
-        y: pinWorldY,
+        x: pinPos.x,
+        y: pinPos.y,
       });
-      setWiringPoints([{ x: pinWorldX, y: pinWorldY }]);
+      setWiringPoints([pinPos]);
     } else {
       if (wiringStart.compId === comp.id && wiringStart.pinId === pin.id) {
         setWiringStart(null);
@@ -658,16 +835,19 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       const finalPoints = [...wiringPoints];
       const lastPoint = finalPoints[finalPoints.length - 1];
-      if (lastPoint.x !== pinWorldX && lastPoint.y !== pinWorldY) {
-        finalPoints.push({ x: pinWorldX, y: lastPoint.y });
+      if (lastPoint.x !== pinPos.x && lastPoint.y !== pinPos.y) {
+        finalPoints.push({ x: pinPos.x, y: lastPoint.y });
       }
-      finalPoints.push({ x: pinWorldX, y: pinWorldY });
+      finalPoints.push(pinPos);
 
       const newWire: Wire = {
         id: `wire_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
         points: finalPoints,
         color: '#38bdf8',
-        fromPin: { compId: wiringStart.compId, pinId: wiringStart.pinId },
+        fromPin:
+          wiringStart.compId && wiringStart.pinId
+            ? { compId: wiringStart.compId, pinId: wiringStart.pinId }
+            : undefined,
         toPin: { compId: comp.id, pinId: pin.id },
       };
 
@@ -675,6 +855,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       onUpdateWires([...wires, newWire]);
       setWiringStart(null);
       setWiringPoints([]);
+      setWireSnapPreview(null);
       onTriggerSolve();
     }
   };
@@ -694,17 +875,76 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
-  // Junction points
+  // Right Click on Component -> Open Context Menu (Xoay, Lật, Copy, Duplicate)
+  const handleComponentContextMenu = (comp: CircuitComponent, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!activeCompIds.includes(comp.id)) {
+      setSelection([comp.id], []);
+    }
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      type: 'component',
+      targetCompId: comp.id,
+    });
+  };
+
+  // Right Click on Wire -> Open Context Menu or Finish Wire if Wiring
+  const handleWireContextMenu = (wire: Wire, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const preciseWorldPos = screenToWorld(e.clientX, e.clientY, false);
+    const snap = getClosestPointOnWire(wire, preciseWorldPos);
+    const pt = snap ? snap.point : screenToWorld(e.clientX, e.clientY);
+
+    if (wiringStart) {
+      // If wiring is in progress, right-clicking on a wire connects and finishes it!
+      handleFinishWireToWire(wire.id, pt);
+      return;
+    }
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      type: 'wire',
+      targetWireId: wire.id,
+      wirePoint: pt,
+    });
+  };
+
+  // Right Click on Empty Canvas
+  const handleCanvasContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (wiringStart) {
+      setWiringStart(null);
+      setWiringPoints([]);
+      setWireSnapPreview(null);
+      return;
+    }
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      type: 'canvas',
+    });
+  };
+
+  // Junction points calculation: Detect coordinates where 2 or more distinct wires intersect
   const junctions: { x: number; y: number }[] = [];
-  const pointCounts = new Map<string, number>();
+  const pointToWires = new Map<string, Set<string>>();
   for (const w of wires) {
     for (const pt of w.points) {
       const key = `${Math.round(pt.x)},${Math.round(pt.y)}`;
-      pointCounts.set(key, (pointCounts.get(key) || 0) + 1);
+      if (!pointToWires.has(key)) pointToWires.set(key, new Set());
+      pointToWires.get(key)!.add(w.id);
     }
   }
-  for (const [key, count] of pointCounts.entries()) {
-    if (count >= 3) {
+  for (const [key, wireSet] of pointToWires.entries()) {
+    if (wireSet.size >= 2) {
       const [x, y] = key.split(',').map(Number);
       junctions.push({ x, y });
     }
@@ -717,6 +957,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onContextMenu={handleCanvasContextMenu}
       className="relative w-full h-full bg-[#090d13] overflow-hidden select-none cursor-crosshair"
       style={{
         backgroundImage: `radial-gradient(circle, #21262d 1px, transparent 1px)`,
@@ -731,6 +972,21 @@ export const Canvas: React.FC<CanvasProps> = ({
             <span className="px-2 py-0.5 bg-cyan-950 border border-cyan-700 text-cyan-300 font-mono font-bold rounded text-[11px]">
               {activeCompIds.length} đã chọn
             </span>
+            <button
+              onClick={() => handleRotateClockwise()}
+              className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
+              title="Xoay phải 90° (R)"
+            >
+              <span>Xoay ↻</span>
+              <kbd className="text-[10px] text-slate-400 font-mono">R</kbd>
+            </button>
+            <button
+              onClick={() => handleFlipHorizontal()}
+              className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
+              title="Lật ngang linh kiện"
+            >
+              <span>Lật ⇋</span>
+            </button>
             <button
               onClick={handleCopy}
               className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
@@ -748,14 +1004,6 @@ export const Canvas: React.FC<CanvasProps> = ({
               <kbd className="text-[10px] text-cyan-300/80 font-mono">^D</kbd>
             </button>
             <button
-              onClick={handleRotateSelection}
-              className="px-2 py-1 rounded hover:bg-slate-700 hover:text-white flex items-center gap-1 transition-colors"
-              title="Xoay 90° (R)"
-            >
-              <span>Xoay</span>
-              <kbd className="text-[10px] text-slate-400 font-mono">R</kbd>
-            </button>
-            <button
               onClick={handleDeleteSelection}
               className="px-2 py-1 rounded hover:bg-rose-950 hover:text-rose-300 text-rose-400 flex items-center gap-1 transition-colors"
               title="Xóa linh kiện đã chọn (Delete / Backspace)"
@@ -766,8 +1014,8 @@ export const Canvas: React.FC<CanvasProps> = ({
           </>
         ) : (
           <div className="px-2 py-0.5 text-slate-400 text-[11px] flex items-center gap-2">
-            <span className="text-cyan-400">💡 Quét chọn:</span>
-            <span>Kéo chuột trên vùng trống để <b>quét chọn nhiều linh kiện</b></span>
+            <span className="text-cyan-400">💡 Chuột phải:</span>
+            <span>Chuột phải vào linh kiện (xoay/lật) hoặc chuột phải vào dây để <b>nối nhánh</b></span>
           </div>
         )}
 
@@ -862,6 +1110,14 @@ export const Canvas: React.FC<CanvasProps> = ({
               className="pointer-events-auto cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
+                if (wiringStart) {
+                  // If wiring is in progress, clicking on wire connects and completes it!
+                  const preciseWorldPos = screenToWorld(e.clientX, e.clientY, false);
+                  const snap = getClosestPointOnWire(wire, preciseWorldPos);
+                  handleFinishWireToWire(wire.id, snap ? snap.point : screenToWorld(e.clientX, e.clientY));
+                  return;
+                }
+
                 if (e.shiftKey || e.ctrlKey) {
                   const nextWires = activeWireIds.includes(wire.id)
                     ? activeWireIds.filter((id) => id !== wire.id)
@@ -871,10 +1127,11 @@ export const Canvas: React.FC<CanvasProps> = ({
                   setSelection([], [wire.id]);
                 }
               }}
+              onContextMenu={(e) => handleWireContextMenu(wire, e)}
               onMouseEnter={() => setHoveredWireId(wire.id)}
               onMouseLeave={() => setHoveredWireId(null)}
             >
-              <path d={pathD} fill="none" stroke="transparent" strokeWidth="12" />
+              <path d={pathD} fill="none" stroke="transparent" strokeWidth="14" />
               <path
                 d={pathD}
                 fill="none"
@@ -887,9 +1144,9 @@ export const Canvas: React.FC<CanvasProps> = ({
           );
         })}
 
-        {/* 2. RENDER JUNCTION DOTS */}
+        {/* 2. RENDER JUNCTION DOTS (Where multiple wires connect) */}
         {junctions.map((j, idx) => (
-          <circle key={idx} cx={j.x} cy={j.y} r="4" fill="#38bdf8" stroke="#090d13" strokeWidth="1.5" />
+          <circle key={idx} cx={j.x} cy={j.y} r="4.5" fill="#38bdf8" stroke="#090d13" strokeWidth="1.5" />
         ))}
 
         {/* 3. ACTIVE WIRING IN PROGRESS PREVIEW */}
@@ -915,8 +1172,8 @@ export const Canvas: React.FC<CanvasProps> = ({
               <line
                 x1={wiringPoints[wiringPoints.length - 1].x}
                 y1={wiringPoints[wiringPoints.length - 1].y}
-                x2={currentMousePos.x}
-                y2={currentMousePos.y}
+                x2={wireSnapPreview ? wireSnapPreview.x : currentMousePos.x}
+                y2={wireSnapPreview ? wireSnapPreview.y : currentMousePos.y}
                 stroke="#60a5fa"
                 strokeWidth="2.5"
                 strokeDasharray="4 2"
@@ -925,7 +1182,22 @@ export const Canvas: React.FC<CanvasProps> = ({
           </g>
         )}
 
-        {/* 4. MARQUEE BOX SELECTION PREVIEW RECTANGLE */}
+        {/* 4. WIRE SNAP PREVIEW JUNCTION (When hovering over another wire while wiring) */}
+        {wireSnapPreview && (
+          <g className="pointer-events-none">
+            <circle
+              cx={wireSnapPreview.x}
+              cy={wireSnapPreview.y}
+              r="6"
+              fill="#22c55e"
+              stroke="#ffffff"
+              strokeWidth="2"
+              className="animate-pulse"
+            />
+          </g>
+        )}
+
+        {/* 5. MARQUEE BOX SELECTION PREVIEW RECTANGLE */}
         {boxSelect?.active && (
           <rect
             x={Math.min(boxSelect.startX, boxSelect.currentX)}
@@ -940,26 +1212,32 @@ export const Canvas: React.FC<CanvasProps> = ({
           />
         )}
 
-        {/* 5. RENDER CIRCUIT COMPONENTS */}
+        {/* 6. RENDER CIRCUIT COMPONENTS */}
         {components.map((comp) => {
           const isSelected = activeCompIds.includes(comp.id);
           const currentA = componentCurrents.get(comp.id) || 0;
           const isBurned = burnedLeds.has(comp.id);
 
+          const w = getComponentWidth(comp);
+          const h = getComponentHeight(comp);
+          const cx = w / 2;
+          const cy = h / 2;
+
           return (
             <g
               key={comp.id}
-              transform={`translate(${comp.x}, ${comp.y}) rotate(${comp.rotation || 0})`}
+              transform={`translate(${comp.x + cx}, ${comp.y + cy}) rotate(${comp.rotation || 0}) scale(${comp.flipH ? -1 : 1}, ${comp.flipV ? -1 : 1}) translate(${-cx}, ${-cy})`}
               className="pointer-events-auto cursor-move"
               onMouseDown={(e) => handleComponentMouseDown(comp, e)}
+              onContextMenu={(e) => handleComponentContextMenu(comp, e)}
             >
               {/* Animated Selection Halo */}
               {isSelected && (
                 <rect
                   x="-8"
                   y="-8"
-                  width={getComponentWidth(comp) + 16}
-                  height={getComponentHeight(comp) + 16}
+                  width={w + 16}
+                  height={h + 16}
                   fill="none"
                   stroke="#38bdf8"
                   strokeWidth="1.8"
@@ -982,14 +1260,15 @@ export const Canvas: React.FC<CanvasProps> = ({
                     key={pin.id}
                     className="cursor-pointer pointer-events-auto"
                     onClick={(e) => handlePinClick(comp, pin, e)}
-                    onMouseEnter={() =>
+                    onMouseEnter={() => {
+                      const worldPos = getPinWorldPos(comp, pin);
                       setHoveredPin({
                         compId: comp.id,
                         pin,
-                        x: comp.x + pin.relX,
-                        y: comp.y + pin.relY,
-                      })
-                    }
+                        x: worldPos.x,
+                        y: worldPos.y,
+                      });
+                    }}
                     onMouseLeave={() => setHoveredPin(null)}
                   >
                     <circle
@@ -1032,29 +1311,179 @@ export const Canvas: React.FC<CanvasProps> = ({
           <div>V: {(pinVoltages.get(`${hoveredPin.compId}:${hoveredPin.pin.id}`) || 0).toFixed(2)} V</div>
         </div>
       )}
+
+      {/* CUSTOM RIGHT-CLICK CONTEXT MENU */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-[#161b22] border border-slate-700 rounded-lg shadow-2xl py-1 text-xs font-mono text-slate-200 min-w-[210px] select-none"
+          style={{
+            left: `${Math.min(window.innerWidth - 230, contextMenu.x)}px`,
+            top: `${Math.min(window.innerHeight - 340, contextMenu.y)}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.type === 'component' && (
+            <>
+              <div className="px-3 py-1 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                Linh Kiện ({activeCompIds.length} mục)
+              </div>
+              <button
+                onClick={() => handleRotateClockwise(contextMenu.targetCompId)}
+                className="w-full px-3 py-1.5 text-left hover:bg-cyan-950/80 hover:text-cyan-300 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">🔄 Xoay phải 90°</span>
+                <span className="text-[10px] text-slate-500 font-mono">CW</span>
+              </button>
+              <button
+                onClick={() => handleRotateCounterClockwise(contextMenu.targetCompId)}
+                className="w-full px-3 py-1.5 text-left hover:bg-cyan-950/80 hover:text-cyan-300 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">↺ Xoay trái 90°</span>
+                <span className="text-[10px] text-slate-500 font-mono">CCW</span>
+              </button>
+              <button
+                onClick={() => handleFlipHorizontal(contextMenu.targetCompId)}
+                className="w-full px-3 py-1.5 text-left hover:bg-cyan-950/80 hover:text-cyan-300 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">⇋ Lật ngang</span>
+                <span className="text-[10px] text-slate-500 font-mono">Flip H</span>
+              </button>
+              <button
+                onClick={() => handleFlipVertical(contextMenu.targetCompId)}
+                className="w-full px-3 py-1.5 text-left hover:bg-cyan-950/80 hover:text-cyan-300 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">⇅ Lật dọc</span>
+                <span className="text-[10px] text-slate-500 font-mono">Flip V</span>
+              </button>
+              <div className="my-1 border-t border-slate-800" />
+              <button
+                onClick={() => {
+                  handleDuplicate();
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-1.5 text-left hover:bg-slate-800 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">📄 Nhân bản</span>
+                <span className="text-[10px] text-slate-500 font-mono">Ctrl+D</span>
+              </button>
+              <button
+                onClick={() => {
+                  handleCopy();
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-1.5 text-left hover:bg-slate-800 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">📋 Sao chép</span>
+                <span className="text-[10px] text-slate-500 font-mono">Ctrl+C</span>
+              </button>
+              <div className="my-1 border-t border-slate-800" />
+              <button
+                onClick={() => {
+                  handleDeleteSelection();
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-1.5 text-left hover:bg-rose-950/70 text-rose-300 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">🗑 Xóa</span>
+                <span className="text-[10px] text-rose-400 font-mono">Del</span>
+              </button>
+            </>
+          )}
+
+          {contextMenu.type === 'wire' && (
+            <>
+              <div className="px-3 py-1 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                Đoạn Dây Dẫn (Wire)
+              </div>
+              {contextMenu.wirePoint && (
+                <button
+                  onClick={() => handleStartWireFromWire(contextMenu.targetWireId!, contextMenu.wirePoint!)}
+                  className="w-full px-3 py-2 text-left bg-cyan-950/50 hover:bg-cyan-900 text-cyan-300 font-semibold flex items-center gap-2"
+                >
+                  <span>⚡ Nối dây từ điểm này (Tạo nhánh)</span>
+                </button>
+              )}
+              <div className="px-3 py-1 text-[10px] text-slate-400 mt-1">Đổi màu dây:</div>
+              <div className="flex items-center gap-1.5 px-3 py-1">
+                {['#38bdf8', '#ef4444', '#10b981', '#f59e0b', '#a855f7', '#64748b'].map((col) => (
+                  <button
+                    key={col}
+                    onClick={() => {
+                      if (contextMenu.targetWireId) {
+                        const updated = wires.map((w) =>
+                          w.id === contextMenu.targetWireId ? { ...w, color: col } : w
+                        );
+                        onUpdateWires(updated);
+                        setContextMenu(null);
+                      }
+                    }}
+                    className="w-5 h-5 rounded-full border border-slate-700 hover:scale-110 transition-transform"
+                    style={{ backgroundColor: col }}
+                  />
+                ))}
+              </div>
+              <div className="my-1 border-t border-slate-800" />
+              <button
+                onClick={() => {
+                  if (contextMenu.targetWireId) {
+                    onPushHistory?.('Xóa dây dẫn');
+                    onUpdateWires(wires.filter((w) => w.id !== contextMenu.targetWireId));
+                    setSelection(activeCompIds, []);
+                    onTriggerSolve();
+                    setContextMenu(null);
+                  }
+                }}
+                className="w-full px-3 py-1.5 text-left hover:bg-rose-950/70 text-rose-300 flex items-center gap-2"
+              >
+                <span>🗑 Xóa dây này</span>
+              </button>
+            </>
+          )}
+
+          {contextMenu.type === 'canvas' && (
+            <>
+              <div className="px-3 py-1 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                Bản Vẽ Mạch (Canvas)
+              </div>
+              {(hasClipboard || clipboardRef.current) && (
+                <button
+                  onClick={() => {
+                    handlePaste();
+                    setContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-slate-800 flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">📥 Dán linh kiện</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Ctrl+V</span>
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  handleSelectAll();
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-1.5 text-left hover:bg-slate-800 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">🔲 Chọn tất cả</span>
+                <span className="text-[10px] text-slate-500 font-mono">Ctrl+A</span>
+              </button>
+              <button
+                onClick={() => {
+                  setZoom(1.0);
+                  setPan({ x: 40, y: 30 });
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-1.5 text-left hover:bg-slate-800 flex items-center gap-2"
+              >
+                <span>🔄 Đặt lại góc nhìn (1:1)</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };
-
-// Component Shape Dimensions Helper
-function getComponentWidth(comp: CircuitComponent): number {
-  if (comp.type === 'mcu8051') return 180;
-  if (comp.type === 'resistor') return 70;
-  if (comp.type === 'led') return 50;
-  if (comp.type === 'ammeter' || comp.type === 'voltmeter') return 60;
-  if (comp.type === 'button' || comp.type === 'switch') return 60;
-  if (comp.type === 'npn') return 45;
-  return 40;
-}
-
-function getComponentHeight(comp: CircuitComponent): number {
-  if (comp.type === 'mcu8051') return 410;
-  if (comp.type === 'resistor') return 20;
-  if (comp.type === 'led') return 30;
-  if (comp.type === 'ammeter' || comp.type === 'voltmeter') return 40;
-  if (comp.type === 'npn') return 50;
-  return 30;
-}
 
 // SVG Shape Renderer for all component types
 function renderComponentShape(

@@ -5,6 +5,7 @@
  */
 
 import { CircuitComponent, PinState, PortMode, Wire } from '../types';
+import { getPinWorldPos } from '../utils/componentGeometry';
 import { Cpu8051 } from './cpu8051';
 
 export interface SolverResult {
@@ -61,29 +62,37 @@ export class CircuitSolver {
     for (const comp of components) {
       for (const pin of comp.pins) {
         const pinKey = `${comp.id}:${pin.id}`;
-        const wx = Math.round(comp.x + pin.relX);
-        const wy = Math.round(comp.y + pin.relY);
-        pinCoordMap.set(`${wx},${wy}`, pinKey);
+        const pinPos = getPinWorldPos(comp, pin);
+        pinCoordMap.set(`${pinPos.x},${pinPos.y}`, pinKey);
         find(pinKey);
       }
     }
 
-    // Connect wires to pins and junctions
+    // Connect wires to pins, junctions, and other wires
     for (const wire of wires) {
       if (!wire.points || wire.points.length < 2) continue;
 
-      const pStart = `${Math.round(wire.points[0].x)},${Math.round(wire.points[0].y)}`;
-      const pEnd = `${Math.round(wire.points[wire.points.length - 1].x)},${Math.round(wire.points[wire.points.length - 1].y)}`;
+      const wireKey = `wire:${wire.id}`;
 
-      const startKey = wire.fromPin ? `${wire.fromPin.compId}:${wire.fromPin.pinId}` : pinCoordMap.get(pStart) || `pt:${pStart}`;
-      const endKey = wire.toPin ? `${wire.toPin.compId}:${wire.toPin.pinId}` : pinCoordMap.get(pEnd) || `pt:${pEnd}`;
+      // Union every point in wire with wireKey and check for pin hits
+      for (let i = 0; i < wire.points.length; i++) {
+        const pt = wire.points[i];
+        const ptCoord = `${Math.round(pt.x)},${Math.round(pt.y)}`;
+        const ptKey = `pt:${ptCoord}`;
+        union(wireKey, ptKey);
 
-      union(startKey, endKey);
+        const pinKeyAtPt = pinCoordMap.get(ptCoord);
+        if (pinKeyAtPt) {
+          union(wireKey, pinKeyAtPt);
+        }
+      }
 
-      // Connect any intermediate wire points to the same root
-      for (let i = 1; i < wire.points.length - 1; i++) {
-        const midPt = `pt:${Math.round(wire.points[i].x)},${Math.round(wire.points[i].y)}`;
-        union(startKey, midPt);
+      // If explicit fromPin/toPin exists, union them as well
+      if (wire.fromPin) {
+        union(wireKey, `${wire.fromPin.compId}:${wire.fromPin.pinId}`);
+      }
+      if (wire.toPin) {
+        union(wireKey, `${wire.toPin.compId}:${wire.toPin.pinId}`);
       }
     }
 

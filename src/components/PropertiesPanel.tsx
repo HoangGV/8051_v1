@@ -181,16 +181,50 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           <div className="font-bold text-slate-100 text-sm">{comp.name || comp.type}</div>
           <div className="text-[10px] text-slate-500 uppercase">{comp.type}</div>
         </div>
-        <button
-          onClick={() => {
-            const newRot = (comp.rotation + 90) % 360;
-            onUpdateComponent({ ...comp, rotation: newRot });
-          }}
-          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-slate-300 text-xs"
-          title="Xoay 90 độ (phím R)"
-        >
-          Xoay (R)
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              const newRot = (comp.rotation + 270) % 360;
+              onUpdateComponent({ ...comp, rotation: newRot });
+            }}
+            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-slate-300 text-xs"
+            title="Xoay trái 90° (Shift+R)"
+          >
+            ↺
+          </button>
+          <button
+            onClick={() => {
+              const newRot = (comp.rotation + 90) % 360;
+              onUpdateComponent({ ...comp, rotation: newRot });
+            }}
+            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 text-slate-300 text-xs"
+            title="Xoay phải 90° (R)"
+          >
+            ↻
+          </button>
+          <button
+            onClick={() => {
+              onUpdateComponent({ ...comp, flipH: !comp.flipH });
+            }}
+            className={`px-2 py-1 rounded border text-xs ${
+              comp.flipH ? 'bg-cyan-900 border-cyan-700 text-cyan-300 font-bold' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
+            }`}
+            title="Lật ngang (Flip Horizontal)"
+          >
+            ⇋
+          </button>
+          <button
+            onClick={() => {
+              onUpdateComponent({ ...comp, flipV: !comp.flipV });
+            }}
+            className={`px-2 py-1 rounded border text-xs ${
+              comp.flipV ? 'bg-cyan-900 border-cyan-700 text-cyan-300 font-bold' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
+            }`}
+            title="Lật dọc (Flip Vertical)"
+          >
+            ⇅
+          </button>
+        </div>
       </div>
 
       {/* Component Name */}

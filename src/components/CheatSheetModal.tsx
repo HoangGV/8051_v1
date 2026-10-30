@@ -202,11 +202,19 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({ isOpen, onClos
               <div className="font-semibold text-cyan-400 mb-1">Thao Tác Đi Dây &amp; Bản Vẽ (SimulIDE Style)</div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-[#0d1117] p-3 rounded border border-slate-800 space-y-1">
-                  <div className="font-bold text-amber-300">Đi Dây (Wiring)</div>
+                  <div className="font-bold text-amber-300">Đi Dây &amp; Nối Nhánh (Wire-to-Wire)</div>
                   <div>• <b>Bắt đầu dây:</b> Nhấp chuột trái vào chân linh kiện (vòng tròn pin).</div>
-                  <div>• <b>Gấp khúc vuông góc:</b> Nhấp chuột trái vào khoảng trống bất kỳ trên canvas.</div>
-                  <div>• <b>Kết thúc dây:</b> Nhấp chuột trái vào chân linh kiện đích hoặc dây khác.</div>
+                  <div>• <b>Nối nhánh giữa 2 dây:</b> Nhấp chuột phải vào bất kỳ điểm nào trên dây $\rightarrow$ Chọn <i>"⚡ Nối dây từ điểm này"</i>, sau đó nhấp vào đoạn dây khác để nối nhánh (tạo nút chấm tròn Junction).</div>
+                  <div>• <b>Gấp khúc vuông góc:</b> Nhấp chuột trái vào khoảng trống bất kỳ trên canvas khi đang đi dây.</div>
+                  <div>• <b>Kết thúc dây:</b> Nhấp chuột trái vào chân linh kiện đích hoặc nhấp vào một dây khác.</div>
                   <div>• <b>Hủy đi dây:</b> Nhấn phím <b>Escape</b>.</div>
+                </div>
+
+                <div className="bg-[#0d1117] p-3 rounded border border-slate-800 space-y-1">
+                  <div className="font-bold text-amber-300">Menu Chuột Phải &amp; Xoay/Lật</div>
+                  <div>• <b>Menu chuột phải linh kiện:</b> Nhấp chuột phải lên linh kiện để chọn <b>Xoay phải 90°</b>, <b>Xoay trái 90°</b>, <b>Lật ngang (Flip H)</b>, <b>Lật dọc (Flip V)</b>, Nhân bản, Sao chép hoặc Xóa.</div>
+                  <div>• <b>Menu chuột phải dây dẫn:</b> Nhấp chuột phải lên dây để tạo nhánh dây mới, đổi màu dây, hoặc xóa dây.</div>
+                  <div>• <b>Tương tác nhanh:</b> Nhấp chuột trực tiếp lên nút nhấn hoặc công tắc để bật/tắt.</div>
                 </div>
 
                 <div className="bg-[#0d1117] p-3 rounded border border-slate-800 space-y-1">

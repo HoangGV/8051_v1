@@ -40,6 +40,8 @@ export interface CircuitComponent {
   y: number;
   rotation: number; // 0, 90, 180, 270
   flipped?: boolean;
+  flipH?: boolean;
+  flipV?: boolean;
   name: string;
   props: Record<string, any>;
   pins: PinState[];
