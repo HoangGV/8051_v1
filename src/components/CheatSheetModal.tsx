@@ -210,13 +210,23 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({ isOpen, onClos
                 </div>
 
                 <div className="bg-[#0d1117] p-3 rounded border border-slate-800 space-y-1">
-                  <div className="font-bold text-amber-300">Thao Tác Linh Kiện</div>
+                  <div className="font-bold text-amber-300">Quét Chọn &amp; Thao Tác Nhóm</div>
+                  <div>• <b>Quét chọn nhiều:</b> Kéo chuột trái trên vùng trống tạo khung chữ nhật bao quanh.</div>
+                  <div>• <b>Chọn thêm / Bỏ chọn:</b> Giữ phím <b>Shift</b> hoặc <b>Ctrl</b> khi nhấp vào linh kiện.</div>
+                  <div>• <b>Di chuyển nhóm:</b> Kéo bất kỳ linh kiện nào đã chọn; các dây nối nội bộ tự di chuyển theo.</div>
+                  <div>• <b>Sao chép (Copy):</b> Phím <b>Ctrl + C</b> | <b>Dán (Paste):</b> Phím <b>Ctrl + V</b>.</div>
+                  <div>• <b>Nhân bản (Duplicate):</b> Phím <b>Ctrl + D</b> (tạo bản sao tức thì kèm dây nối).</div>
+                  <div>• <b>Chọn tất cả:</b> Phím <b>Ctrl + A</b>.</div>
+                  <div>• <b>Xoay nhóm 90°:</b> Nhấn phím <b>R</b>.</div>
+                  <div>• <b>Xóa nhóm:</b> Phím <b>Delete</b> hoặc <b>Backspace</b>.</div>
+                </div>
+
+                <div className="bg-[#0d1117] p-3 rounded border border-slate-800 space-y-1">
+                  <div className="font-bold text-amber-300">Linh Kiện &amp; Lịch Sử</div>
                   <div>• <b>Hoàn tác (Undo):</b> Phím <b>Ctrl + Z</b> (phục hồi khi xóa nhầm hoặc đổi vị trí).</div>
                   <div>• <b>Làm lại (Redo):</b> Phím <b>Ctrl + Y</b> hoặc <b>Ctrl + Shift + Z</b>.</div>
-                  <div>• <b>Xoay linh kiện 90°:</b> Nhấn phím <b>R</b> khi linh kiện đang được chọn.</div>
-                  <div>• <b>Xóa linh kiện / Dây:</b> Phím <b>Delete</b> hoặc <b>Backspace</b>.</div>
-                  <div>• <b>Kéo di chuyển:</b> Giữ chuột trái trên thân linh kiện rồi kéo; dây tự bám theo.</div>
                   <div>• <b>Tương tác nút bấm:</b> Nhấp chuột trực tiếp lên nút nhấn hoặc công tắc.</div>
+                  <div>• <b>Thay đổi độ rộng khung:</b> Rê chuột vào vạch phân cách giữa Canvas và Khung IDE hoặc Khung Console/Thanh ghi rồi kéo để thay đổi kích thước.</div>
                 </div>
 
                 <div className="bg-[#0d1117] p-3 rounded border border-slate-800 space-y-1">
@@ -231,6 +241,7 @@ export const CheatSheetModal: React.FC<CheatSheetModalProps> = ({ isOpen, onClos
                   <div>• <b>Đặt Điểm Dừng (Breakpoint):</b> Nhấp vào số dòng ở lề trái editor.</div>
                   <div>• <b>Phím Tab:</b> Tự động thụt lề 4 khoảng trắng.</div>
                   <div>• <b>Dòng đang thực thi:</b> Nổi bật vạch vàng kim chỉ thị vị trí con trỏ PC.</div>
+                  <div>• <b>Thay đổi độ rộng:</b> Kéo mép trái khung mã nguồn để mở rộng không gian viết code.</div>
                 </div>
               </div>
             </div>

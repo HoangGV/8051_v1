@@ -41,9 +41,76 @@ export default function App() {
   const [wires, setWires] = useState<Wire[]>(PREBUILT_EXAMPLES[0].circuit.wires);
   const [selectedExampleId, setSelectedExampleId] = useState<string>(PREBUILT_EXAMPLES[0].id);
 
-  // Selection state
-  const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
-  const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
+  // Selection state (Single & Multiple Selection)
+  const [selectedCompIds, setSelectedCompIds] = useState<string[]>([]);
+  const [selectedWireIds, setSelectedWireIds] = useState<string[]>([]);
+  const selectedCompId = selectedCompIds.length === 1 ? selectedCompIds[0] : (selectedCompIds[0] || null);
+  const selectedWireId = selectedWireIds.length === 1 ? selectedWireIds[0] : (selectedWireIds[0] || null);
+
+  // Resizable Panels State (localStorage persistent)
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('sim_right_panel_width');
+      return saved ? Math.max(300, Math.min(1000, parseInt(saved, 10))) : 460;
+    } catch {
+      return 460;
+    }
+  });
+
+  const [bottomPanelHeight, setBottomPanelHeight] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('sim_bottom_panel_height');
+      return saved ? Math.max(100, Math.min(650, parseInt(saved, 10))) : 224;
+    } catch {
+      return 224;
+    }
+  });
+
+  const [isResizingRight, setIsResizingRight] = useState(false);
+  const [isResizingBottom, setIsResizingBottom] = useState(false);
+
+  // Global mousemove/mouseup listener for smooth panel resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingRight) {
+        const newWidth = Math.max(280, Math.min(window.innerWidth - 350, window.innerWidth - e.clientX));
+        setRightPanelWidth(newWidth);
+      }
+      if (isResizingBottom) {
+        const newHeight = Math.max(100, Math.min(window.innerHeight - 150, window.innerHeight - e.clientY));
+        setBottomPanelHeight(newHeight);
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isResizingRight) {
+        setIsResizingRight(false);
+        try {
+          localStorage.setItem('sim_right_panel_width', String(rightPanelWidth));
+        } catch {}
+      }
+      if (isResizingBottom) {
+        setIsResizingBottom(false);
+        try {
+          localStorage.setItem('sim_bottom_panel_height', String(bottomPanelHeight));
+        } catch {}
+      }
+    };
+
+    if (isResizingRight || isResizingBottom) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = isResizingRight ? 'col-resize' : 'row-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingRight, isResizingBottom, rightPanelWidth, bottomPanelHeight]);
 
   // Simulation execution state
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -195,8 +262,8 @@ export default function App() {
     // Apply previous state
     setComponents(previousState.components);
     setWires(previousState.wires);
-    setSelectedCompId(previousState.selectedCompId);
-    setSelectedWireId(previousState.selectedWireId);
+    setSelectedCompIds(previousState.selectedCompId ? [previousState.selectedCompId] : []);
+    setSelectedWireIds(previousState.selectedWireId ? [previousState.selectedWireId] : []);
 
     addLog(
       'OK',
@@ -232,8 +299,8 @@ export default function App() {
     // Apply next state
     setComponents(nextState.components);
     setWires(nextState.wires);
-    setSelectedCompId(nextState.selectedCompId);
-    setSelectedWireId(nextState.selectedWireId);
+    setSelectedCompIds(nextState.selectedCompId ? [nextState.selectedCompId] : []);
+    setSelectedWireIds(nextState.selectedWireId ? [nextState.selectedWireId] : []);
 
     addLog('OK', `↷ Đã làm lại (Redo): ${nextState.description}`);
 
@@ -440,8 +507,8 @@ export default function App() {
     setSourceCode(ex.sourceCode);
     setComponents(ex.circuit.components);
     setWires(ex.circuit.wires);
-    setSelectedCompId(null);
-    setSelectedWireId(null);
+    setSelectedCompIds([]);
+    setSelectedWireIds([]);
     setBurnedLeds(new Set());
 
     // Reset CPU and assemble
@@ -606,7 +673,8 @@ export default function App() {
 
     pushHistory(`Thêm ${newComp.name} (${newComp.type})`);
     setComponents([...components, newComp]);
-    setSelectedCompId(newId);
+    setSelectedCompIds([newId]);
+    setSelectedWireIds([]);
     triggerSolve();
     addLog('INFO', `Đã thêm linh kiện: ${newComp.name} (${newComp.type})`);
   };
@@ -723,8 +791,8 @@ export default function App() {
         if (loadedCode) {
           setSourceCode(loadedCode);
         }
-        setSelectedCompId(null);
-        setSelectedWireId(null);
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
 
         addLog(
           'OK',
@@ -1038,17 +1106,31 @@ export default function App() {
             wires={wires}
             selectedComponentId={selectedCompId}
             selectedWireId={selectedWireId}
+            selectedComponentIds={selectedCompIds}
+            selectedWireIds={selectedWireIds}
             onSelectComponent={(id) => {
-              setSelectedCompId(id);
+              setSelectedCompIds(id ? [id] : []);
               if (id) {
-                setSelectedWireId(null);
+                setSelectedWireIds([]);
                 setRightTab('properties');
               }
             }}
             onSelectWire={(id) => {
-              setSelectedWireId(id);
+              setSelectedWireIds(id ? [id] : []);
               if (id) {
-                setSelectedCompId(null);
+                setSelectedCompIds([]);
+                setRightTab('properties');
+              }
+            }}
+            onSelectComponents={(ids) => {
+              setSelectedCompIds(ids);
+              if (ids.length > 0) {
+                setRightTab('properties');
+              }
+            }}
+            onSelectWires={(ids) => {
+              setSelectedWireIds(ids);
+              if (ids.length > 0) {
                 setRightTab('properties');
               }
             }}
@@ -1060,11 +1142,29 @@ export default function App() {
             onTriggerSolve={triggerSolve}
             onPushHistory={pushHistory}
             onPushCustomSnapshot={pushCustomSnapshot}
+            onLogMessage={addLog}
           />
         </div>
 
+        {/* Vertical Resizer Bar between Canvas and Right Sidebar */}
+        <div
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsResizingRight(true);
+          }}
+          className={`w-1.5 hover:w-2 transition-all cursor-col-resize shrink-0 z-30 flex items-center justify-center group ${
+            isResizingRight ? 'bg-cyan-500 w-2' : 'bg-[#1e293b] hover:bg-cyan-500/80'
+          }`}
+          title="Kéo sang trái / phải để thay đổi độ rộng khung IDE"
+        >
+          <div className="w-0.5 h-8 bg-slate-600 group-hover:bg-cyan-200 rounded-full" />
+        </div>
+
         {/* Right Sidebar: Tabs for Assembly Editor & Properties */}
-        <div className="w-[450px] shrink-0 border-l border-slate-800 flex flex-col bg-[#0d1117]">
+        <div
+          style={{ width: `${rightPanelWidth}px` }}
+          className="shrink-0 border-l border-slate-800 flex flex-col bg-[#0d1117] min-w-[280px] max-w-[85vw]"
+        >
           {/* Tab Headers */}
           <div className="flex items-center border-b border-slate-800 bg-[#161b22] px-2 text-xs">
             <button
@@ -1085,7 +1185,7 @@ export default function App() {
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              Thuộc Tính {selectedComponent ? `(${selectedComponent.name})` : ''}
+              Thuộc Tính {selectedCompIds.length > 1 ? `(${selectedCompIds.length} mục)` : selectedComponent ? `(${selectedComponent.name})` : ''}
             </button>
             <button
               onClick={() => setRightTab('listing')}
@@ -1123,6 +1223,7 @@ export default function App() {
               <PropertiesPanel
                 selectedComponent={selectedComponent}
                 selectedWire={selectedWire}
+                selectedComponents={components.filter((c) => selectedCompIds.includes(c.id))}
                 onUpdateComponent={(updated) => {
                   pushHistory(`Sửa thông số ${updated.name || updated.type}`);
                   setComponents(components.map((c) => (c.id === updated.id ? updated : c)));
@@ -1133,7 +1234,58 @@ export default function App() {
                   pushHistory(`Xóa ${comp?.name || id}`);
                   setComponents(components.filter((c) => c.id !== id));
                   setWires(wires.filter((w) => w.fromPin?.compId !== id && w.toPin?.compId !== id));
-                  setSelectedCompId(null);
+                  setSelectedCompIds((prev) => prev.filter((i) => i !== id));
+                  triggerSolve();
+                }}
+                onDeleteMultiple={(ids) => {
+                  const idSet = new Set(ids);
+                  pushHistory(`Xóa ${ids.length} linh kiện`);
+                  setComponents(components.filter((c) => !idSet.has(c.id)));
+                  setWires(wires.filter((w) => !idSet.has(w.fromPin?.compId || '') && !idSet.has(w.toPin?.compId || '')));
+                  setSelectedCompIds([]);
+                  triggerSolve();
+                  addLog('INFO', `Đã xóa ${ids.length} linh kiện.`);
+                }}
+                onDuplicateMultiple={() => {
+                  const compsToDup = components.filter((c) => selectedCompIds.includes(c.id));
+                  if (compsToDup.length === 0) return;
+                  const compIdSet = new Set(selectedCompIds);
+                  const wiresToDup = wires.filter(
+                    (w) => w.fromPin && compIdSet.has(w.fromPin.compId) && w.toPin && compIdSet.has(w.toPin.compId)
+                  );
+                  const idMap = new Map<string, string>();
+                  const offset = 40;
+                  const newComps: CircuitComponent[] = compsToDup.map((c) => {
+                    const newId = `${c.type}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+                    idMap.set(c.id, newId);
+                    return { ...c, id: newId, name: `${c.name || c.type}_copy`, x: c.x + offset, y: c.y + offset };
+                  });
+                  const newWires: Wire[] = wiresToDup.map((w) => {
+                    const newWireId = `wire_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+                    return {
+                      ...w,
+                      id: newWireId,
+                      points: w.points.map((pt) => ({ x: pt.x + offset, y: pt.y + offset })),
+                      fromPin: w.fromPin ? { ...w.fromPin, compId: idMap.get(w.fromPin.compId) || w.fromPin.compId } : undefined,
+                      toPin: w.toPin ? { ...w.toPin, compId: idMap.get(w.toPin.compId) || w.toPin.compId } : undefined,
+                    };
+                  });
+                  pushHistory(`Nhân bản ${newComps.length} linh kiện`);
+                  setComponents([...components, ...newComps]);
+                  setWires([...wires, ...newWires]);
+                  setSelectedCompIds(newComps.map((c) => c.id));
+                  triggerSolve();
+                  addLog('OK', `Đã nhân bản ${newComps.length} linh kiện.`);
+                }}
+                onCopyMultiple={() => {
+                  addLog('INFO', `Đã sao chép ${selectedCompIds.length} linh kiện. Bấm Ctrl+V trên canvas để dán.`);
+                }}
+                onRotateMultiple={() => {
+                  pushHistory(`Xoay ${selectedCompIds.length} linh kiện`);
+                  const compSet = new Set(selectedCompIds);
+                  setComponents(
+                    components.map((c) => (compSet.has(c.id) ? { ...c, rotation: ((c.rotation || 0) + 90) % 360 } : c))
+                  );
                   triggerSolve();
                 }}
                 onUpdateWire={(updated) => {
@@ -1143,7 +1295,7 @@ export default function App() {
                 onDeleteWire={(id) => {
                   pushHistory('Xóa dây dẫn');
                   setWires(wires.filter((w) => w.id !== id));
-                  setSelectedWireId(null);
+                  setSelectedWireIds((prev) => prev.filter((i) => i !== id));
                   triggerSolve();
                 }}
                 burnedLeds={burnedLeds}
@@ -1201,8 +1353,25 @@ export default function App() {
         </div>
       </div>
 
+      {/* Horizontal Resizer Bar between Workspace and Bottom Dock */}
+      <div
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setIsResizingBottom(true);
+        }}
+        className={`h-1.5 hover:h-2 transition-all cursor-row-resize shrink-0 z-30 flex items-center justify-center group ${
+          isResizingBottom ? 'bg-cyan-500 h-2' : 'bg-[#1e293b] hover:bg-cyan-500/80'
+        }`}
+        title="Kéo lên / xuống để thay đổi độ rộng (chiều cao) khung Console & Thanh ghi"
+      >
+        <div className="h-0.5 w-12 bg-slate-600 group-hover:bg-cyan-200 rounded-full" />
+      </div>
+
       {/* 3. BOTTOM TELEMETRY DOCK */}
-      <div className="h-56 shrink-0 border-t border-slate-800 flex flex-col bg-[#0d1117]">
+      <div
+        style={{ height: `${bottomPanelHeight}px` }}
+        className="shrink-0 border-t border-slate-800 flex flex-col bg-[#0d1117] min-h-[100px] max-h-[80vh]"
+      >
         {/* Dock Tab Selector */}
         <div className="flex items-center justify-between px-3 bg-[#161b22] border-b border-slate-800 text-xs">
           <div className="flex items-center">

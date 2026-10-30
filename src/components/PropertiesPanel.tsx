@@ -9,8 +9,13 @@ import { CircuitComponent, PortMode, Wire } from '../types';
 interface PropertiesPanelProps {
   selectedComponent: CircuitComponent | null;
   selectedWire: Wire | null;
+  selectedComponents?: CircuitComponent[];
   onUpdateComponent: (comp: CircuitComponent) => void;
   onDeleteComponent: (id: string) => void;
+  onDeleteMultiple?: (ids: string[]) => void;
+  onDuplicateMultiple?: () => void;
+  onCopyMultiple?: () => void;
+  onRotateMultiple?: () => void;
   onUpdateWire: (wire: Wire) => void;
   onDeleteWire: (id: string) => void;
   burnedLeds: Set<string>;
@@ -22,8 +27,13 @@ interface PropertiesPanelProps {
 export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   selectedComponent,
   selectedWire,
+  selectedComponents,
   onUpdateComponent,
   onDeleteComponent,
+  onDeleteMultiple,
+  onDuplicateMultiple,
+  onCopyMultiple,
+  onRotateMultiple,
   onUpdateWire,
   onDeleteWire,
   burnedLeds,
@@ -31,6 +41,81 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   portMode,
   onSetPortMode,
 }) => {
+  // 1. Multiple Components Selected View
+  if (selectedComponents && selectedComponents.length > 1) {
+    const typeCountMap: Record<string, number> = {};
+    for (const c of selectedComponents) {
+      typeCountMap[c.type] = (typeCountMap[c.type] || 0) + 1;
+    }
+
+    return (
+      <div className="flex flex-col h-full bg-[#161b22] p-4 text-slate-300 font-mono text-xs space-y-4 overflow-y-auto">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div>
+            <div className="font-bold text-cyan-400 text-sm">
+              Đang chọn {selectedComponents.length} linh kiện
+            </div>
+            <div className="text-[10px] text-slate-500 uppercase">Nhóm linh kiện đa đối tượng</div>
+          </div>
+          <span className="px-2 py-0.5 bg-cyan-950 border border-cyan-700 text-cyan-300 font-mono text-[11px] rounded font-bold">
+            {selectedComponents.length} items
+          </span>
+        </div>
+
+        {/* Breakdown by type */}
+        <div className="bg-[#0d1117] p-3 rounded border border-slate-800 space-y-2">
+          <div className="text-[11px] font-semibold text-slate-400">Danh sách thành phần:</div>
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            {Object.entries(typeCountMap).map(([type, count]) => (
+              <div key={type} className="flex items-center justify-between bg-slate-900/60 px-2 py-1 rounded border border-slate-800/80">
+                <span className="text-slate-300 capitalize">{type}</span>
+                <span className="text-cyan-300 font-bold font-mono">x{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Group Actions */}
+        <div className="space-y-2 pt-2">
+          <div className="text-[11px] font-semibold text-slate-400">Thao tác nhóm:</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={onDuplicateMultiple}
+              className="py-1.5 px-3 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-700/80 rounded text-cyan-300 font-semibold transition-colors flex items-center justify-center gap-1.5"
+            >
+              <span>Nhân bản</span>
+              <kbd className="text-[10px] text-cyan-400/80 font-mono">^D</kbd>
+            </button>
+            <button
+              onClick={onCopyMultiple}
+              className="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200 font-semibold transition-colors flex items-center justify-center gap-1.5"
+            >
+              <span>Sao chép</span>
+              <kbd className="text-[10px] text-slate-400 font-mono">^C</kbd>
+            </button>
+            <button
+              onClick={onRotateMultiple}
+              className="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200 font-semibold transition-colors flex items-center justify-center gap-1.5"
+            >
+              <span>Xoay 90°</span>
+              <kbd className="text-[10px] text-slate-400 font-mono">R</kbd>
+            </button>
+            <button
+              onClick={() => onDeleteMultiple?.(selectedComponents.map((c) => c.id))}
+              className="py-1.5 px-3 bg-rose-950/70 hover:bg-rose-900 border border-rose-700/60 rounded text-rose-300 font-semibold transition-colors flex items-center justify-center gap-1.5"
+            >
+              <span>Xóa tất cả</span>
+              <kbd className="text-[10px] text-rose-300/80 font-mono">Del</kbd>
+            </button>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-slate-500 bg-slate-900/40 p-2.5 rounded border border-slate-800/60 mt-auto">
+          💡 Bạn có thể giữ chuột trái trên bất kỳ linh kiện nào trong nhóm để di chuyển toàn bộ cùng lúc. Các đường dây kết nối giữa các linh kiện sẽ tự động di chuyển theo.
+        </div>
+      </div>
+    );
+  }
   if (selectedWire) {
     return (
       <div className="flex flex-col h-full bg-[#161b22] p-3 text-slate-300 font-mono text-xs space-y-4">
