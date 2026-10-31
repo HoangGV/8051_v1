@@ -32,7 +32,8 @@ export const Palette: React.FC<PaletteProps> = ({ onAddComponent }) => {
     { type: 'button', label: 'Nút nhấn', category: 'Điều khiển', icon: '🔘', desc: 'Tự nhả (Push-button)' },
     { type: 'switch', label: 'Công tắc gạt', category: 'Điều khiển', icon: '🎚️', desc: 'Giữ trạng thái (SPST)' },
     { type: 'led', label: 'Đèn LED', category: 'Hiển thị', icon: '💡', desc: 'Đỏ / Xanh / Vàng' },
-    { type: 'sevseg_ca', label: 'LED 7 đoạn (CA)', category: 'Hiển thị', icon: '8️⃣', desc: 'Anode chung' },
+    { type: 'sevseg_ca', label: 'LED 7 đoạn (CA)', category: 'Hiển thị', icon: '8️⃣', desc: 'Anode chung (+5V)' },
+    { type: 'sevseg_cc', label: 'LED 7 đoạn (CC)', category: 'Hiển thị', icon: '8️⃣', desc: 'Cathode chung (GND)' },
     { type: 'buzzer', label: 'Loa Buzzer', category: 'Hiển thị', icon: '🔔', desc: 'Báo động âm thanh' },
     // Meters
     { type: 'ammeter', label: 'Ampe kế', category: 'Đo lường', icon: '🅰️', desc: 'Đo dòng nối tiếp' },

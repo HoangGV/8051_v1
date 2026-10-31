@@ -667,6 +667,46 @@ export default function App() {
           { id: 'n', name: '-', relX: 60, relY: 15 },
         ],
       };
+    } else if (type === 'sevseg_ca' || type === 'sevseg_cc') {
+      const isCA = type === 'sevseg_ca';
+      newComp = {
+        id: newId,
+        type: type,
+        name: `DS_${components.length + 1}`,
+        x: 400,
+        y: 180,
+        rotation: 0,
+        props: {
+          color: 'red',
+          mode: isCA ? 'ca' : 'cc',
+          vf: 2.0,
+        },
+        pins: [
+          { id: 'a', name: 'a', relX: 0, relY: 20 },
+          { id: 'b', name: 'b', relX: 0, relY: 30 },
+          { id: 'c', name: 'c', relX: 0, relY: 40 },
+          { id: 'd', name: 'd', relX: 0, relY: 50 },
+          { id: 'e', name: 'e', relX: 0, relY: 60 },
+          { id: 'f', name: 'f', relX: 0, relY: 70 },
+          { id: 'g', name: 'g', relX: 0, relY: 80 },
+          { id: 'dp', name: 'dp', relX: 0, relY: 90 },
+          { id: 'com', name: isCA ? 'CA' : 'CC', relX: 50, relY: 130 },
+        ],
+      };
+    } else if (type === 'buzzer') {
+      newComp = {
+        id: newId,
+        type: 'buzzer',
+        name: `BZ_${components.length + 1}`,
+        x: 350,
+        y: 200,
+        rotation: 0,
+        props: {},
+        pins: [
+          { id: 'pos', name: '+', relX: 0, relY: 25 },
+          { id: 'neg', name: '-', relX: 60, relY: 25 },
+        ],
+      };
     } else {
       addLog('WARN', `Linh kiện ${type} sẽ được hỗ trợ trong phiên bản kế.`);
       return;

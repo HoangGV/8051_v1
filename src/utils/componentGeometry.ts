@@ -13,6 +13,8 @@ export function getComponentWidth(comp: CircuitComponent): number {
   if (comp.type === 'ammeter' || comp.type === 'voltmeter') return 60;
   if (comp.type === 'button' || comp.type === 'switch') return 60;
   if (comp.type === 'npn') return 45;
+  if (comp.type === 'sevseg_ca' || comp.type === 'sevseg_cc') return 100;
+  if (comp.type === 'buzzer') return 60;
   return 40;
 }
 
@@ -22,6 +24,8 @@ export function getComponentHeight(comp: CircuitComponent): number {
   if (comp.type === 'led') return 30;
   if (comp.type === 'ammeter' || comp.type === 'voltmeter') return 40;
   if (comp.type === 'npn') return 50;
+  if (comp.type === 'sevseg_ca' || comp.type === 'sevseg_cc') return 130;
+  if (comp.type === 'buzzer') return 50;
   return 30;
 }
 

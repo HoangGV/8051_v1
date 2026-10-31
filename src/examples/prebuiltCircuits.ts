@@ -8,6 +8,7 @@
  * 6. External Interrupt INT0 on P3.2 toggles LED
  * 7. NPN BJT driving LED with Ammeter and Voltmeter
  * 8. 8-bit Binary Counter 0-255 on P1 LEDs
+ * 9. 7-Segment Display 0-9 Counter on P0 (MOVC A, @A+DPTR)
  */
 
 import { CircuitComponent, PrebuiltExample, Wire } from '../types';
@@ -1298,6 +1299,204 @@ HERE:
           fromPin: { compId: 'led1', pinId: 'cathode' },
           toPin: { compId: 'gnd1', pinId: 'gnd' },
           color: '#64748b',
+        },
+      ],
+    },
+  },
+  // 9. 7-SEGMENT DISPLAY 0-9 COUNTER
+  {
+    id: 'ex9_sevseg',
+    title: '9. Đếm số 0 - 9 trên LED 7 đoạn (Port 0)',
+    category: 'Nâng cao',
+    description:
+      'Mô phỏng LED 7 đoạn Anode chung nối trực tiếp cổng P0. Chương trình dùng con trỏ DPTR tra bảng mã (MOVC A, @A+DPTR) đếm từ 0 đến 9 tuần hoàn.',
+    sourceCode: `; ============================================
+; Ví dụ 9: Đếm số 0 - 9 trên LED 7 đoạn Anode chung
+; Kết nối: P0.0 -> a, P0.1 -> b, ..., P0.6 -> g
+; Chân COM nối nguồn VCC (+5V)
+; Mã LED 7 đoạn CA: LED sáng khi nhận mức 0
+; ============================================
+    ORG 0000H
+    LJMP MAIN
+
+    ORG 0030H
+MAIN:
+    MOV DPTR, #SEV_SEG_TABLE ; Trỏ DPTR tới đầu bảng mã 7 đoạn
+
+RESET_COUNT:
+    MOV R2, #0               ; Bắt đầu đếm từ chữ số 0
+
+COUNT_LOOP:
+    MOV A, R2                ; Đưa chỉ số đếm vào thanh ghi A
+    MOVC A, @A+DPTR          ; Tra bảng lấy mã hiển thị tương ứng
+    MOV P0, A                ; Xuất mã ra cổng P0 điều khiển LED 7 đoạn
+
+    ACALL DELAY              ; Gọi hàm trễ để quan sát chữ số
+
+    INC R2                   ; Tăng giá trị đếm
+    CJNE R2, #10, COUNT_LOOP ; Nếu chưa đếm đến 10 thì lặp tiếp
+    SJMP RESET_COUNT         ; Đã xong 9, quay lại đếm từ 0
+
+; --------------------------------------------
+; Hàm trễ hiển thị ~ 300 ms (Thạch anh 12 MHz)
+; --------------------------------------------
+DELAY:
+    MOV R6, #120
+D1:
+    MOV R7, #250
+D2:
+    DJNZ R7, D2
+    DJNZ R6, D1
+    RET
+
+; --------------------------------------------
+; Bảng mã LED 7 đoạn Anode chung (0 - 9)
+; 0: 0C0H, 1: 0F9H, 2: 0A4H, 3: 0B0H, 4: 099H
+; 5: 092H, 6: 082H, 7: 0F8H, 8: 080H, 9: 090H
+; --------------------------------------------
+SEV_SEG_TABLE:
+    DB 0C0H, 0F9H, 0A4H, 0B0H, 099H
+    DB 092H, 082H, 0F8H, 080H, 090H
+
+    END`,
+    circuit: {
+      components: [
+        createMcuComponent(120, 80),
+        {
+          id: 'ds1',
+          type: 'sevseg_ca',
+          name: '7-SEG CA',
+          x: 420,
+          y: 100,
+          rotation: 0,
+          props: { color: 'red', mode: 'ca', vf: 2.0 },
+          pins: [
+            { id: 'a', name: 'a', relX: 0, relY: 20 },
+            { id: 'b', name: 'b', relX: 0, relY: 30 },
+            { id: 'c', name: 'c', relX: 0, relY: 40 },
+            { id: 'd', name: 'd', relX: 0, relY: 50 },
+            { id: 'e', name: 'e', relX: 0, relY: 60 },
+            { id: 'f', name: 'f', relX: 0, relY: 70 },
+            { id: 'g', name: 'g', relX: 0, relY: 80 },
+            { id: 'dp', name: 'dp', relX: 0, relY: 90 },
+            { id: 'com', name: 'CA', relX: 50, relY: 130 },
+          ],
+        },
+        {
+          id: 'vcc1',
+          type: 'vcc',
+          name: 'VCC',
+          x: 455,
+          y: 270,
+          rotation: 0,
+          props: { voltage: 5.0 },
+          pins: [{ id: 'pin1', name: 'VCC', relX: 15, relY: 25 }],
+        },
+      ],
+      wires: [
+        {
+          id: 'w_p00_a',
+          points: [
+            { x: 300, y: 120 },
+            { x: 420, y: 120 },
+          ],
+          fromPin: { compId: 'u1', pinId: 'p0_0' },
+          toPin: { compId: 'ds1', pinId: 'a' },
+          color: '#38bdf8',
+        },
+        {
+          id: 'w_p01_b',
+          points: [
+            { x: 300, y: 145 },
+            { x: 350, y: 145 },
+            { x: 350, y: 130 },
+            { x: 420, y: 130 },
+          ],
+          fromPin: { compId: 'u1', pinId: 'p0_1' },
+          toPin: { compId: 'ds1', pinId: 'b' },
+          color: '#38bdf8',
+        },
+        {
+          id: 'w_p02_c',
+          points: [
+            { x: 300, y: 170 },
+            { x: 360, y: 170 },
+            { x: 360, y: 140 },
+            { x: 420, y: 140 },
+          ],
+          fromPin: { compId: 'u1', pinId: 'p0_2' },
+          toPin: { compId: 'ds1', pinId: 'c' },
+          color: '#38bdf8',
+        },
+        {
+          id: 'w_p03_d',
+          points: [
+            { x: 300, y: 195 },
+            { x: 370, y: 195 },
+            { x: 370, y: 150 },
+            { x: 420, y: 150 },
+          ],
+          fromPin: { compId: 'u1', pinId: 'p0_3' },
+          toPin: { compId: 'ds1', pinId: 'd' },
+          color: '#38bdf8',
+        },
+        {
+          id: 'w_p04_e',
+          points: [
+            { x: 300, y: 220 },
+            { x: 380, y: 220 },
+            { x: 380, y: 160 },
+            { x: 420, y: 160 },
+          ],
+          fromPin: { compId: 'u1', pinId: 'p0_4' },
+          toPin: { compId: 'ds1', pinId: 'e' },
+          color: '#38bdf8',
+        },
+        {
+          id: 'w_p05_f',
+          points: [
+            { x: 300, y: 245 },
+            { x: 390, y: 245 },
+            { x: 390, y: 170 },
+            { x: 420, y: 170 },
+          ],
+          fromPin: { compId: 'u1', pinId: 'p0_5' },
+          toPin: { compId: 'ds1', pinId: 'f' },
+          color: '#38bdf8',
+        },
+        {
+          id: 'w_p06_g',
+          points: [
+            { x: 300, y: 270 },
+            { x: 400, y: 270 },
+            { x: 400, y: 180 },
+            { x: 420, y: 180 },
+          ],
+          fromPin: { compId: 'u1', pinId: 'p0_6' },
+          toPin: { compId: 'ds1', pinId: 'g' },
+          color: '#38bdf8',
+        },
+        {
+          id: 'w_p07_dp',
+          points: [
+            { x: 300, y: 295 },
+            { x: 410, y: 295 },
+            { x: 410, y: 190 },
+            { x: 420, y: 190 },
+          ],
+          fromPin: { compId: 'u1', pinId: 'p0_7' },
+          toPin: { compId: 'ds1', pinId: 'dp' },
+          color: '#38bdf8',
+        },
+        {
+          id: 'w_com_vcc',
+          points: [
+            { x: 470, y: 230 },
+            { x: 470, y: 295 },
+          ],
+          fromPin: { compId: 'ds1', pinId: 'com' },
+          toPin: { compId: 'vcc1', pinId: 'pin1' },
+          color: '#ef4444',
         },
       ],
     },

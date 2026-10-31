@@ -1125,6 +1125,13 @@ export const Canvas: React.FC<CanvasProps> = ({
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+          <filter id="glow-yellow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
 
         {/* 1. RENDER WIRES */}
@@ -1290,13 +1297,34 @@ export const Canvas: React.FC<CanvasProps> = ({
               )}
 
               {/* Component Shape */}
-              {renderComponentShape(comp, currentA, isBurned, handleComponentInteractiveClick)}
+              {renderComponentShape(comp, currentA, isBurned, handleComponentInteractiveClick, pinVoltages)}
 
               {/* Component Pins */}
               {comp.pins.map((pin) => {
                 const pinKey = `${comp.id}:${pin.id}`;
                 const volt = pinVoltages.get(pinKey) || 0;
                 const isPinHovered = hoveredPin?.compId === comp.id && hoveredPin?.pin.id === pin.id;
+
+                const textX =
+                  pin.relX === 0
+                    ? 8
+                    : pin.relX === w
+                    ? pin.relX - 8
+                    : pin.relX;
+
+                const textY =
+                  pin.relY === 0
+                    ? 11
+                    : pin.relY === h
+                    ? pin.relY - 6
+                    : pin.relY + 3;
+
+                const textAnchor =
+                  pin.relX === 0
+                    ? 'start'
+                    : pin.relX === w
+                    ? 'end'
+                    : 'middle';
 
                 return (
                   <g
@@ -1323,9 +1351,9 @@ export const Canvas: React.FC<CanvasProps> = ({
                       strokeWidth="1.5"
                     />
                     <text
-                      x={pin.relX + (pin.relX === 0 ? 8 : -8)}
-                      y={pin.relY + 3}
-                      textAnchor={pin.relX === 0 ? 'start' : 'end'}
+                      x={textX}
+                      y={textY}
+                      textAnchor={textAnchor}
                       fill="#94a3b8"
                       fontSize="9"
                       fontFamily="JetBrains Mono"
@@ -1563,7 +1591,8 @@ function renderComponentShape(
   comp: CircuitComponent,
   currentA: number,
   isBurned: boolean,
-  onInteractiveClick: (comp: CircuitComponent, e: React.MouseEvent) => void
+  onInteractiveClick: (comp: CircuitComponent, e: React.MouseEvent) => void,
+  pinVoltages?: Map<string, number>
 ) {
   switch (comp.type) {
     case 'mcu8051':
@@ -1615,7 +1644,13 @@ function renderComponentShape(
       const color = comp.props.color || 'red';
       const isLit = currentA > 0.001 && !isBurned;
       const glowFilter =
-        color === 'green' ? 'url(#glow-green)' : color === 'blue' ? 'url(#glow-blue)' : 'url(#glow-red)';
+        color === 'green'
+          ? 'url(#glow-green)'
+          : color === 'blue'
+          ? 'url(#glow-blue)'
+          : color === 'yellow'
+          ? 'url(#glow-yellow)'
+          : 'url(#glow-red)';
       const fillColor = isBurned
         ? '#1f2937'
         : isLit
@@ -1623,6 +1658,8 @@ function renderComponentShape(
           ? '#22c55e'
           : color === 'blue'
           ? '#3b82f6'
+          : color === 'yellow'
+          ? '#eab308'
           : '#ef4444'
         : '#475569';
 
@@ -1651,6 +1688,204 @@ function renderComponentShape(
           )}
           <text x="25" y="-6" textAnchor="middle" fill="#cbd5e1" fontSize="10" fontFamily="JetBrains Mono">
             {comp.name || 'LED'}
+          </text>
+        </g>
+      );
+    }
+
+    case 'sevseg_ca':
+    case 'sevseg_cc': {
+      const isCA = comp.type === 'sevseg_ca';
+      const color = comp.props.color || 'red';
+      const glowFilter =
+        color === 'green'
+          ? 'url(#glow-green)'
+          : color === 'blue'
+          ? 'url(#glow-blue)'
+          : color === 'yellow'
+          ? 'url(#glow-yellow)'
+          : 'url(#glow-red)';
+
+      const litColor =
+        color === 'green'
+          ? '#22c55e'
+          : color === 'blue'
+          ? '#3b82f6'
+          : color === 'yellow'
+          ? '#eab308'
+          : '#ef4444';
+
+      const unlitColor = '#151d28';
+      const unlitStroke = '#1e293b';
+
+      // Read voltages of COM pin and segments a-g, dp
+      const vCom = pinVoltages?.get(`${comp.id}:com`) ?? 0;
+      const segLit: Record<string, boolean> = {};
+      const segments = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'dp'];
+      for (const seg of segments) {
+        const vSeg = pinVoltages?.get(`${comp.id}:${seg}`) ?? 0;
+        const vDrop = isCA ? vCom - vSeg : vSeg - vCom;
+        segLit[seg] = vDrop > 1.6;
+      }
+
+      // Decode digit if recognizable pattern
+      const DIGIT_MAP: Record<string, string> = {
+        '1111110': '0',
+        '0110000': '1',
+        '1101101': '2',
+        '1111001': '3',
+        '0110011': '4',
+        '1011011': '5',
+        '1011111': '6',
+        '1110000': '7',
+        '1111111': '8',
+        '1111011': '9',
+        '1110111': 'A',
+        '0011111': 'b',
+        '1001110': 'C',
+        '0111101': 'd',
+        '1001111': 'E',
+        '1000111': 'F',
+      };
+      const key = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((s) => (segLit[s] ? '1' : '0')).join('');
+      const decodedChar = DIGIT_MAP[key] || '';
+
+      const getFill = (seg: string) => (segLit[seg] ? litColor : unlitColor);
+      const getStroke = (seg: string) => (segLit[seg] ? litColor : unlitStroke);
+      const getFilter = (seg: string) => (segLit[seg] ? glowFilter : undefined);
+
+      return (
+        <g>
+          {/* Main Housing */}
+          <rect x="0" y="0" width="100" height="130" rx="6" fill="#0f172a" stroke="#334155" strokeWidth="2" />
+
+          {/* Header Label */}
+          <text
+            x="48"
+            y="13"
+            textAnchor="middle"
+            fill="#94a3b8"
+            fontSize="9"
+            fontFamily="JetBrains Mono"
+            fontWeight="bold"
+          >
+            {comp.name || (isCA ? '7-SEG CA' : '7-SEG CC')}
+          </text>
+          {decodedChar && (
+            <text
+              x="92"
+              y="13"
+              textAnchor="end"
+              fill={litColor}
+              fontSize="10"
+              fontFamily="JetBrains Mono"
+              fontWeight="bold"
+            >
+              [{decodedChar}]
+            </text>
+          )}
+
+          {/* Recessed Bezel Window */}
+          <rect x="25" y="17" width="70" height="106" rx="4" fill="#030712" stroke="#1e293b" strokeWidth="1.5" />
+
+          {/* Pin Trace Guides from left pins */}
+          {[20, 30, 40, 50, 60, 70, 80, 90].map((py, idx) => (
+            <line key={idx} x1="0" y1={py} x2="14" y2={py} stroke="#334155" strokeWidth="1" strokeDasharray="2 2" />
+          ))}
+          {/* COM pin guide at bottom */}
+          <line x1="50" y1="130" x2="50" y2="123" stroke="#334155" strokeWidth="1.5" />
+
+          {/* 7 Segment Polygons */}
+          {/* Segment a (Top) */}
+          <polygon
+            points="42,23 72,23 75,26 72,29 42,29 39,26"
+            fill={getFill('a')}
+            stroke={getStroke('a')}
+            strokeWidth="0.8"
+            filter={getFilter('a')}
+          />
+
+          {/* Segment b (Top-Right) */}
+          <polygon
+            points="73,30 78,27 81,30 81,58 78,61 73,57"
+            fill={getFill('b')}
+            stroke={getStroke('b')}
+            strokeWidth="0.8"
+            filter={getFilter('b')}
+          />
+
+          {/* Segment c (Bottom-Right) */}
+          <polygon
+            points="73,66 78,63 81,66 81,94 78,97 73,93"
+            fill={getFill('c')}
+            stroke={getStroke('c')}
+            strokeWidth="0.8"
+            filter={getFilter('c')}
+          />
+
+          {/* Segment d (Bottom) */}
+          <polygon
+            points="42,95 72,95 75,98 72,101 42,101 39,98"
+            fill={getFill('d')}
+            stroke={getStroke('d')}
+            strokeWidth="0.8"
+            filter={getFilter('d')}
+          />
+
+          {/* Segment e (Bottom-Left) */}
+          <polygon
+            points="34,66 39,63 42,66 42,94 39,97 34,93"
+            fill={getFill('e')}
+            stroke={getStroke('e')}
+            strokeWidth="0.8"
+            filter={getFilter('e')}
+          />
+
+          {/* Segment f (Top-Left) */}
+          <polygon
+            points="34,30 39,27 42,30 42,58 39,61 34,57"
+            fill={getFill('f')}
+            stroke={getStroke('f')}
+            strokeWidth="0.8"
+            filter={getFilter('f')}
+          />
+
+          {/* Segment g (Middle) */}
+          <polygon
+            points="42,59 72,59 75,62 72,65 42,65 39,62"
+            fill={getFill('g')}
+            stroke={getStroke('g')}
+            strokeWidth="0.8"
+            filter={getFilter('g')}
+          />
+
+          {/* Decimal Point (dp) */}
+          <circle
+            cx="87"
+            cy="99"
+            r="3.5"
+            fill={getFill('dp')}
+            stroke={getStroke('dp')}
+            strokeWidth="0.8"
+            filter={getFilter('dp')}
+          />
+        </g>
+      );
+    }
+
+    case 'buzzer': {
+      const isBuzzing = currentA > 0.002;
+      return (
+        <g>
+          <line x1="0" y1="25" x2="15" y2="25" stroke="#94a3b8" strokeWidth="2" />
+          <line x1="45" y1="25" x2="60" y2="25" stroke="#94a3b8" strokeWidth="2" />
+          <circle cx="30" cy="25" r="15" fill="#1e293b" stroke={isBuzzing ? '#f59e0b' : '#64748b'} strokeWidth="2" />
+          <path d="M 24 18 L 30 18 L 36 12 L 36 38 L 30 32 L 24 32 Z" fill={isBuzzing ? '#f59e0b' : '#94a3b8'} />
+          {isBuzzing && (
+            <path d="M 39 20 A 8 8 0 0 1 39 30" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+          )}
+          <text x="30" y="48" textAnchor="middle" fill="#cbd5e1" fontSize="9" fontFamily="JetBrains Mono">
+            {comp.name || 'Buzzer'}
           </text>
         </g>
       );

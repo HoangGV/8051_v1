@@ -357,6 +357,101 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         </>
       )}
 
+      {(comp.type === 'sevseg_ca' || comp.type === 'sevseg_cc') && (
+        <>
+          <div>
+            <label className="text-slate-400 block mb-1">Loại LED 7 đoạn:</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  const updatedPins = comp.pins.map((p) => (p.id === 'com' ? { ...p, name: 'CA' } : p));
+                  onUpdateComponent({
+                    ...comp,
+                    type: 'sevseg_ca',
+                    props: { ...comp.props, mode: 'ca' },
+                    pins: updatedPins,
+                  });
+                }}
+                className={`p-2 rounded border text-left text-xs ${
+                  comp.type === 'sevseg_ca'
+                    ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold'
+                    : 'bg-[#0d1117] border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div>Anode Chung (CA)</div>
+                <div className="text-[10px] text-slate-500 font-normal">Chân COM nối +5V, sáng khi chân mức 0</div>
+              </button>
+              <button
+                onClick={() => {
+                  const updatedPins = comp.pins.map((p) => (p.id === 'com' ? { ...p, name: 'CC' } : p));
+                  onUpdateComponent({
+                    ...comp,
+                    type: 'sevseg_cc',
+                    props: { ...comp.props, mode: 'cc' },
+                    pins: updatedPins,
+                  });
+                }}
+                className={`p-2 rounded border text-left text-xs ${
+                  comp.type === 'sevseg_cc'
+                    ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold'
+                    : 'bg-[#0d1117] border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div>Cathode Chung (CC)</div>
+                <div className="text-[10px] text-slate-500 font-normal">Chân COM nối GND, sáng khi chân mức 1</div>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Màu sắc phát sáng:</label>
+            <div className="flex gap-2">
+              {[
+                { name: 'red', bg: '#ef4444', label: 'Đỏ' },
+                { name: 'green', bg: '#22c55e', label: 'Xanh lá' },
+                { name: 'blue', bg: '#3b82f6', label: 'Xanh dương' },
+                { name: 'yellow', bg: '#eab308', label: 'Vàng' },
+              ].map((c) => (
+                <button
+                  key={c.name}
+                  onClick={() => handlePropChange('color', c.name)}
+                  className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 flex items-center justify-center ${
+                    (comp.props.color || 'red') === c.name ? 'border-white scale-105' : 'border-transparent'
+                  }`}
+                  style={{ backgroundColor: c.bg }}
+                  title={c.label}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Điện áp thuận Vf (V):</label>
+            <input
+              type="number"
+              step="0.1"
+              value={comp.props.vf || 2.0}
+              onChange={(e) => handlePropChange('vf', Number(e.target.value))}
+              className="w-full bg-[#0d1117] border border-slate-700 rounded px-2 py-1 text-slate-200 outline-none font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Sơ đồ chân hiển thị:</label>
+            <div className="bg-[#0d1117] p-2.5 rounded border border-slate-800 text-[11px] space-y-1.5">
+              <div className="text-slate-400 flex justify-between">
+                <span>Chân tín hiệu a - g, dp:</span>
+                <span className="text-cyan-300 font-mono font-semibold">Cạnh trái (8 chân)</span>
+              </div>
+              <div className="text-slate-400 flex justify-between">
+                <span>Chân chung (COM):</span>
+                <span className="text-amber-400 font-mono font-semibold">Cạnh đáy giữa</span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {comp.type === 'vcc' && (
         <div>
           <label className="text-slate-400 block mb-1">Điện áp nguồn Vcc (V):</label>
